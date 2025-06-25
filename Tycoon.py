@@ -1,7 +1,7 @@
 import random
 
 """"
-54 cards including the two jokes
+54 cards including the two jokers
 4 players
 each player is given a random amount of cards divided between all of them
 they start with either 13 or 14 cards the player with 14 cards start
@@ -49,7 +49,7 @@ def buildDeck():
     deck = []
     suits = ["Heart", "Spade", "Diamond", "Club"]
     values = [2,3,4,5,6,7,8,9,10,"Jack","Queen", "King","Ace"]
-    jokers = ["Joker"]
+    joker = ["Joker"]
     for suit in suits:
         for value in values:
             cardVal = "{} {}".format(suit,value) 
@@ -81,19 +81,27 @@ def drawCards(deck, numCards):
 
 tycoonDeck = buildDeck()
 tycoonDeck = shuffleDeck(tycoonDeck) 
-print(tycoonDeck)
+discards = []
+
+def showHand(player,playerHand):
+    print("Player {}'s hand:".format(player+1))
+    for card in playerHand:
+        print(card)
+    print("\n")
+#left off here! lets try and figure out validation tomorrow
+def canPlay(discardCard, playerHand):
+    if len(discardCard) == 0:
+        
 
 players = []
 numPlayers = int(input("How many players? "))
-if numPlayers < 2 or numPlayers > 4:
-    print("This game only supports 2-4 players")
-    exit()
+while numPlayers < 2 or numPlayers > 4:
+    numPlayers = int(input("Invalid. Please enter a number between 2-4. How many players? "))
 
 base = len(tycoonDeck) // numPlayers
 remainder = len(tycoonDeck) % numPlayers
 
 distribution = [base] * numPlayers
-import random
 extra_indices = random.sample(range(numPlayers), remainder)
 for i in extra_indices:
     distribution[i] += 1
@@ -102,3 +110,16 @@ for numCards in distribution:
 
 
 print(players)
+
+playerTurn = random.randint(0, numPlayers - 1)
+playing = True
+
+
+while playing:
+    showHand(playerTurn, players[playerTurn])
+    print("Play cards or press 'p' to pass")
+    
+    
+    
+    
+
