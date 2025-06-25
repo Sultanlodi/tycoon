@@ -1,3 +1,4 @@
+import random
 
 """"
 54 cards including the two jokes
@@ -41,17 +42,63 @@ end of game
 person with the most points after 3 rounds wins the game and becomes the tycoon!
 """
 
-class Deck:
-    def __init__(self, suit,value):
-        self.suit = suit
-        self.value = value
-        
-    cardValue = [3,4,5,6,7,8,9,10,'J','Q','K',2,'Joker']
-    
-class User:
-    def __init__(self, name, points, status):
-        self.name = name
-        self.points = points
-        self.status = status
-        
 
+"""Builds a deck of cards 
+"""
+def buildDeck():
+    deck = []
+    suits = ["Heart", "Spade", "Diamond", "Club"]
+    values = [2,3,4,5,6,7,8,9,10,"Jack","Queen", "King","Ace"]
+    jokers = ["Joker"]
+    for suit in suits:
+        for value in values:
+            cardVal = "{} {}".format(suit,value) 
+            deck.append(cardVal)
+    for i in range(2):
+        deck.append(jokers[0])
+    
+    return deck
+
+"Shuffles a list of cards"
+def shuffleDeck(deck):
+    for cardPos in range(len(deck)):
+        randPos = random.randint(0,53)
+        deck[cardPos], deck[randPos] = deck[randPos], deck[cardPos]
+    return deck
+
+"Draw card function that draws specific cards from the top of the deck"
+
+def drawCards(deck, numCards):
+    cardsDrawn = []
+    for _ in range(numCards):
+        if deck: 
+            cardsDrawn.append(deck.pop(0))
+        else:
+            break 
+    return cardsDrawn
+    
+    
+
+tycoonDeck = buildDeck()
+tycoonDeck = shuffleDeck(tycoonDeck) 
+print(tycoonDeck)
+
+players = []
+numPlayers = int(input("How many players? "))
+if numPlayers < 2 or numPlayers > 4:
+    print("This game only supports 2-4 players")
+    exit()
+
+base = len(tycoonDeck) // numPlayers
+remainder = len(tycoonDeck) % numPlayers
+
+distribution = [base] * numPlayers
+import random
+extra_indices = random.sample(range(numPlayers), remainder)
+for i in extra_indices:
+    distribution[i] += 1
+for numCards in distribution:
+    players.append(drawCards(tycoonDeck, numCards))
+
+
+print(players)
