@@ -40,6 +40,19 @@ points are added to the placement of the player
 
 end of game
 person with the most points after 3 rounds wins the game and becomes the tycoon!
+
+when its just the bots speed up the play so it doesnt take as long
+when an 8 is played it ends the round instantly and the player who played it starts the next round
+when a 3 is played after a joker it ends the turn instantly and the player who played it starts the next turn
+the tycoon gets to choose two cards to swap with the beggar
+the rich gets to choose one card to swap with the poor
+i should still be able to see my hand when its not my turn
+if the tycoon loses their title they become the beggar and are out of the round
+the joker is the wild card and can be played with any card
+the create room function to invite friends should just be a waiting screen until all players join
+when the host starts the game the deck is shuffled and cards are dealt and anyone not present is replaced with a bot
+if bots are playing speed up the game so it doesnt take as long
+when the player plays an 8 it ends the round instantly and the player who played it starts the next round
 """
 
 

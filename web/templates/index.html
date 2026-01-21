@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Tycoon Card Game</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+</head>
+<body>
+    <div id="app">
+        <!-- Home Screen -->
+        <div id="home-screen" class="screen active">
+            <div class="container">
+                <h1 class="logo">TYCOON</h1>
+                <p class="subtitle">The Classic Card Game</p>
+
+                <div class="form-group">
+                    <label>Your Name</label>
+                    <input type="text" id="player-name" placeholder="Enter your name" maxlength="15" value="Player">
+                </div>
+
+                <div class="form-group">
+                    <label>Bot Difficulty</label>
+                    <div class="difficulty-buttons">
+                        <button class="diff-btn" data-diff="easy">Easy</button>
+                        <button class="diff-btn active" data-diff="medium">Medium</button>
+                        <button class="diff-btn" data-diff="hard">Hard</button>
+                    </div>
+                </div>
+
+                <div class="game-options">
+                    <button class="game-btn offline-btn" onclick="playOffline()">
+                        <span class="btn-icon">🤖</span>
+                        <span class="btn-title">Play vs Bots</span>
+                        <span class="btn-desc">Practice with AI opponents</span>
+                    </button>
+
+                    <button class="game-btn create-btn" onclick="showCreateModal()">
+                        <span class="btn-icon">🎯</span>
+                        <span class="btn-title">Create Room</span>
+                        <span class="btn-desc">Host a game for friends</span>
+                    </button>
+
+                    <button class="game-btn join-btn" onclick="showJoinModal()">
+                        <span class="btn-icon">🔗</span>
+                        <span class="btn-title">Join Room</span>
+                        <span class="btn-desc">Enter a room code</span>
+                    </button>
+                </div>
+
+                <button class="how-to-play" onclick="showRules()">📖 How to Play</button>
+            </div>
+        </div>
+
+        <!-- Waiting Room -->
+        <div id="waiting-screen" class="screen">
+            <div class="container">
+                <h2>Waiting Room</h2>
+                <div class="room-code-display">
+                    <span class="label">Room Code</span>
+                    <span id="room-code-display" class="code">------</span>
+                    <button class="copy-btn" onclick="copyRoomCode()">Copy</button>
+                </div>
+
+                <div class="players-list" id="waiting-players">
+                    <div class="player-slot empty">Waiting...</div>
+                    <div class="player-slot empty">Waiting...</div>
+                    <div class="player-slot empty">Waiting...</div>
+                    <div class="player-slot empty">Waiting...</div>
+                </div>
+
+                <p class="waiting-info">Share the room code with friends. Empty slots will be filled with bots.</p>
+
+                <div class="waiting-buttons">
+                    <button class="btn-secondary" onclick="leaveRoom()">Leave</button>
+                    <button class="btn-primary" id="start-game-btn" onclick="startGame()" style="display: none;">Start Game</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Game Screen -->
+        <div id="game-screen" class="screen">
+            <div class="game-header">
+                <div class="round-info">Round <span id="round-number">1</span>/3</div>
+                <div id="revolution-banner" class="revolution-banner" style="display: none;">REVOLUTION!</div>
+                <button class="leave-btn" onclick="leaveGame()">✕</button>
+            </div>
+
+            <div class="game-board">
+                <!-- Other players -->
+                <div class="opponents">
+                    <div class="opponent left" id="player-1">
+                        <div class="opponent-name">Bot 1</div>
+                        <div class="opponent-cards">13 cards</div>
+                        <div class="opponent-rank"></div>
+                    </div>
+                    <div class="opponent top" id="player-2">
+                        <div class="opponent-name">Bot 2</div>
+                        <div class="opponent-cards">13 cards</div>
+                        <div class="opponent-rank"></div>
+                    </div>
+                    <div class="opponent right" id="player-3">
+                        <div class="opponent-name">Bot 3</div>
+                        <div class="opponent-cards">13 cards</div>
+                        <div class="opponent-rank"></div>
+                    </div>
+                </div>
+
+                <!-- Center pile -->
+                <div class="center-area">
+                    <div class="pile" id="current-pile"></div>
+                    <div class="turn-indicator" id="turn-indicator"></div>
+                </div>
+
+                <!-- Player's hand -->
+                <div class="player-area">
+                    <div class="hand" id="player-hand"></div>
+                    <div class="action-buttons">
+                        <button class="btn-pass" id="pass-btn" onclick="passTurn()" disabled>Pass</button>
+                        <button class="btn-play" id="play-btn" onclick="playCards()" disabled>Play</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Round End Screen -->
+        <div id="round-end-screen" class="screen">
+            <div class="container scoreboard">
+                <h2>Round <span id="round-end-number">1</span> Complete!</h2>
+                <div class="rankings" id="rankings"></div>
+                <button class="btn-primary" onclick="continueGame()">Continue</button>
+            </div>
+        </div>
+
+        <!-- Game End Screen -->
+        <div id="game-end-screen" class="screen">
+            <div class="container scoreboard">
+                <h2>Game Over!</h2>
+                <div class="final-rankings" id="final-rankings"></div>
+                <button class="btn-primary" onclick="playAgain()">Play Again</button>
+                <button class="btn-secondary" onclick="goHome()">Home</button>
+            </div>
+        </div>
+
+        <!-- Modals -->
+        <div id="modal-overlay" class="modal-overlay" onclick="closeModal()">
+            <div class="modal" onclick="event.stopPropagation()">
+                <div id="modal-content"></div>
+            </div>
+        </div>
+
+        <!-- Rules Modal -->
+        <div id="rules-modal" class="modal-overlay" onclick="closeRulesModal()">
+            <div class="modal rules-modal" onclick="event.stopPropagation()">
+                <h2>How to Play</h2>
+                <div class="rules-content">
+                    <h3>Overview</h3>
+                    <p>4 players, 54 cards (including 2 jokers), 3 rounds.</p>
+
+                    <h3>Card Hierarchy</h3>
+                    <p>3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → J → Q → K → A → 2 → Joker</p>
+
+                    <h3>Gameplay</h3>
+                    <ul>
+                        <li>Play 1-4 cards of the same value</li>
+                        <li>Next player must play same count with higher value</li>
+                        <li>Pass if you can't or don't want to play</li>
+                        <li>Turn ends when 3 players pass</li>
+                    </ul>
+
+                    <h3>Special Rules</h3>
+                    <ul>
+                        <li><strong>8 Rule:</strong> Playing an 8 clears the pile, you go again</li>
+                        <li><strong>3 vs Joker:</strong> Play a 3 to counter a Joker, you go again</li>
+                        <li><strong>Revolution:</strong> 4 of a kind reverses card strength</li>
+                        <li><strong>Joker is Wild:</strong> Joker can substitute for any card</li>
+                    </ul>
+
+                    <h3>Scoring</h3>
+                    <p>Tycoon (1st): 20pts | Rich (2nd): 10pts | Poor (3rd): 5pts | Beggar (4th): 0pts</p>
+                </div>
+                <button class="btn-primary" onclick="closeRulesModal()">Got it!</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.0/socket.io.min.js"></script>
+    <script src="/static/js/game.js"></script>
+</body>
+</html>
