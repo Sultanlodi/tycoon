@@ -430,6 +430,9 @@ def add_bots_to_room(room: GameRoom, count: int):
     used_names = [p.name for p in room.players.values()]
     available_names = [n for n in BOT_NAMES if n not in used_names]
 
+    # Randomize bot names
+    random.shuffle(available_names)
+
     current_seat = len(room.players)
     for i in range(count):
         bot_id = f"bot-{current_seat + i}"

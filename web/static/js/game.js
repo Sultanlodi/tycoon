@@ -474,9 +474,21 @@ function passTurn() {
 }
 
 function leaveGame() {
-    if (confirm('Are you sure you want to leave the game?')) {
-        goHome();
-    }
+    // Show custom leave confirmation modal (works better on mobile)
+    const content = `
+        <h2>Leave Game?</h2>
+        <p>Are you sure you want to leave the current game?</p>
+        <div class="modal-buttons">
+            <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+            <button class="btn-primary" onclick="confirmLeaveGame()">Leave</button>
+        </div>
+    `;
+    openModal(content);
+}
+
+function confirmLeaveGame() {
+    closeModal();
+    goHome();
 }
 
 // ============== Round/Game End ==============

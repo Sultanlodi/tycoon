@@ -400,16 +400,19 @@ body {
 .leave-btn {
     background: var(--p5-black);
     border: 2px solid var(--p5-white);
-    width: 36px;
-    height: 36px;
+    width: 44px;
+    height: 44px;
     border-radius: 0;
     color: var(--p5-white);
-    font-size: 18px;
+    font-size: 20px;
     cursor: pointer;
     font-weight: bold;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
 }
 
-.leave-btn:hover {
+.leave-btn:hover,
+.leave-btn:active {
     background: var(--p5-white);
     color: var(--p5-red);
 }
