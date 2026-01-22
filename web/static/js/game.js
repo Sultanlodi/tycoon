@@ -118,7 +118,12 @@ function connectSocket() {
         showCutscene('counter-cutscene');
     });
 
-    // Listen for card exchange event
+    // Listen for card selection request (Tycoon/Rich choose cards)
+    socket.on('select_cards_to_give', (data) => {
+        showCardSelectionScreen(data);
+    });
+
+    // Listen for card exchange event (show the swap)
     socket.on('card_exchange', (data) => {
         showCardExchange(data);
     });
@@ -546,44 +551,132 @@ function playAgain() {
     goHome();
 }
 
+// ============== Card Selection (for Tycoon/Rich) ==============
+let cardSelectionState = {
+    requiredCount: 0,
+    selectedCards: [],
+    hand: []
+};
+
+function showCardSelectionScreen(data) {
+    cardSelectionState.requiredCount = data.requiredCount;
+    cardSelectionState.selectedCards = [];
+    cardSelectionState.hand = data.hand;
+
+    const screen = document.getElementById('card-select-screen');
+    const info = document.getElementById('card-select-info');
+    const handContainer = document.getElementById('card-select-hand');
+    const selectedContainer = document.getElementById('card-select-selected');
+    const confirmBtn = document.getElementById('card-select-confirm');
+
+    // Set info text based on rank
+    if (data.rank === 'tycoon') {
+        info.textContent = `You are TYCOON - Select ${data.requiredCount} cards to give to Beggar`;
+    } else {
+        info.textContent = `You are RICH - Select ${data.requiredCount} card to give to Poor`;
+    }
+
+    // Render hand
+    handContainer.innerHTML = '';
+    data.hand.forEach(card => {
+        const elem = createCardElement(card, true, false);
+        elem.addEventListener('click', () => toggleCardForGiving(card, elem));
+        handContainer.appendChild(elem);
+    });
+
+    // Clear selected area
+    selectedContainer.innerHTML = '';
+    confirmBtn.disabled = true;
+
+    screen.classList.add('active');
+}
+
+function toggleCardForGiving(card, elem) {
+    const index = cardSelectionState.selectedCards.findIndex(c => c.id === card.id);
+
+    if (index >= 0) {
+        // Deselect
+        cardSelectionState.selectedCards.splice(index, 1);
+        elem.classList.remove('selected-to-give');
+    } else {
+        // Select if not at max
+        if (cardSelectionState.selectedCards.length < cardSelectionState.requiredCount) {
+            cardSelectionState.selectedCards.push(card);
+            elem.classList.add('selected-to-give');
+        }
+    }
+
+    // Update selected display
+    const selectedContainer = document.getElementById('card-select-selected');
+    selectedContainer.innerHTML = '';
+    cardSelectionState.selectedCards.forEach(c => {
+        selectedContainer.appendChild(createCardElement(c, false, false));
+    });
+
+    // Enable/disable confirm button
+    const confirmBtn = document.getElementById('card-select-confirm');
+    confirmBtn.disabled = cardSelectionState.selectedCards.length !== cardSelectionState.requiredCount;
+}
+
+function confirmCardSelection() {
+    const cardIds = cardSelectionState.selectedCards.map(c => c.id);
+
+    socket.emit('submit_card_selection', {
+        code: gameState.roomCode,
+        playerId: gameState.playerId,
+        cardIds: cardIds
+    });
+
+    document.getElementById('card-select-screen').classList.remove('active');
+}
+
 // ============== Card Exchange ==============
+function createCardBack() {
+    const elem = document.createElement('div');
+    elem.className = 'card card-back';
+    elem.innerHTML = `
+        <div class="card-back-design"></div>
+    `;
+    return elem;
+}
+
 function showCardExchange(data) {
     const screen = document.getElementById('exchange-screen');
 
-    // Render beggar's cards (giving to tycoon)
+    // Render card backs for beggar's cards (giving to tycoon)
     const beggarGives = document.getElementById('beggar-gives');
     beggarGives.innerHTML = '';
     if (data.beggarGives) {
-        data.beggarGives.forEach(card => {
-            beggarGives.appendChild(createCardElement(card, false, false));
-        });
+        for (let i = 0; i < data.beggarGives.length; i++) {
+            beggarGives.appendChild(createCardBack());
+        }
     }
 
-    // Render tycoon's cards (giving to beggar)
+    // Render card backs for tycoon's cards (giving to beggar)
     const tycoonGives = document.getElementById('tycoon-gives');
     tycoonGives.innerHTML = '';
     if (data.tycoonGives) {
-        data.tycoonGives.forEach(card => {
-            tycoonGives.appendChild(createCardElement(card, false, false));
-        });
+        for (let i = 0; i < data.tycoonGives.length; i++) {
+            tycoonGives.appendChild(createCardBack());
+        }
     }
 
-    // Render poor's cards (giving to rich)
+    // Render card backs for poor's cards (giving to rich)
     const poorGives = document.getElementById('poor-gives');
     poorGives.innerHTML = '';
     if (data.poorGives) {
-        data.poorGives.forEach(card => {
-            poorGives.appendChild(createCardElement(card, false, false));
-        });
+        for (let i = 0; i < data.poorGives.length; i++) {
+            poorGives.appendChild(createCardBack());
+        }
     }
 
-    // Render rich's cards (giving to poor)
+    // Render card backs for rich's cards (giving to poor)
     const richGives = document.getElementById('rich-gives');
     richGives.innerHTML = '';
     if (data.richGives) {
-        data.richGives.forEach(card => {
-            richGives.appendChild(createCardElement(card, false, false));
-        });
+        for (let i = 0; i < data.richGives.length; i++) {
+            richGives.appendChild(createCardBack());
+        }
     }
 
     screen.classList.add('active');

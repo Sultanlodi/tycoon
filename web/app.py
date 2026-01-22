@@ -88,10 +88,12 @@ class GameRoom:
     total_rounds: int = 3
     is_revolution: bool = False
     pass_count: int = 0
-    game_phase: str = 'waiting'  # waiting, playing, round_end, game_end
+    game_phase: str = 'waiting'  # waiting, playing, round_end, game_end, card_selection
     finish_order: List[str] = field(default_factory=list)
     bot_difficulty: str = 'medium'
     created_at: float = field(default_factory=time.time)
+    # Card exchange state
+    pending_selections: Dict[str, List[str]] = field(default_factory=dict)  # player_id -> card_ids
 
 # In-memory storage for rooms
 rooms: Dict[str, GameRoom] = {}
@@ -658,8 +660,54 @@ def handle_next_round(data):
 
     room = rooms[code]
     start_next_round(room)
-    broadcast_game_state(room)
-    process_bot_turns(room)
+    # Note: broadcast_game_state and process_bot_turns are called by finalize_round_start
+
+
+@socketio.on('submit_card_selection')
+def handle_submit_card_selection(data):
+    """Handle player submitting their card selection for exchange"""
+    code = data.get('code')
+    player_id = data.get('playerId')
+    card_ids = data.get('cardIds', [])
+
+    if code not in rooms:
+        emit('error', {'message': 'Room not found'})
+        return
+
+    room = rooms[code]
+
+    if room.game_phase != 'card_selection':
+        emit('error', {'message': 'Not in card selection phase'})
+        return
+
+    if player_id not in room.players:
+        emit('error', {'message': 'Player not found'})
+        return
+
+    player = room.players[player_id]
+
+    # Validate the player is Tycoon or Rich
+    if player.rank not in ['tycoon', 'rich']:
+        emit('error', {'message': 'Only Tycoon and Rich select cards'})
+        return
+
+    # Validate card count
+    required_count = 2 if player.rank == 'tycoon' else 1
+    if len(card_ids) != required_count:
+        emit('error', {'message': f'Must select {required_count} card(s)'})
+        return
+
+    # Validate cards are in player's hand
+    hand_ids = {c.id for c in player.hand}
+    if not all(cid in hand_ids for cid in card_ids):
+        emit('error', {'message': 'Invalid cards selected'})
+        return
+
+    # Store selection
+    room.pending_selections[player_id] = card_ids
+
+    # Check if all selections are complete
+    check_selections_complete(room)
 
 # ============== Game Processing ==============
 
@@ -841,8 +889,131 @@ def start_next_round(room: GameRoom):
         player.finish_order = None
         player.passed_this_turn = False
 
-    # Perform card exchange
+    # Request card selections from Tycoon and Rich (bots auto-select)
+    room.game_phase = 'card_selection'
+    room.pending_selections = {}
+
+    request_card_selections(room)
+
+def request_card_selections(room: GameRoom):
+    """Request card selections from Tycoon and Rich (bots auto-select)"""
+    players_list = list(room.players.values())
+
+    tycoon = next((p for p in players_list if p.rank == 'tycoon'), None)
+    rich = next((p for p in players_list if p.rank == 'rich'), None)
+
+    if not tycoon or not rich:
+        # Can't do exchange, start round directly
+        finalize_round_start(room)
+        return
+
+    # Tycoon needs to select 2 cards
+    if tycoon.is_bot:
+        # Bot auto-selects worst 2 cards
+        tycoon_worst = get_worst_cards(tycoon.hand, 2)
+        room.pending_selections[tycoon.id] = [c.id for c in tycoon_worst]
+    else:
+        # Request human to select
+        socketio.emit('select_cards_to_give', {
+            'rank': 'tycoon',
+            'requiredCount': 2,
+            'hand': [card_to_dict(c) for c in tycoon.hand]
+        }, room=tycoon.sid)
+
+    # Rich needs to select 1 card
+    if rich.is_bot:
+        # Bot auto-selects worst 1 card
+        rich_worst = get_worst_cards(rich.hand, 1)
+        room.pending_selections[rich.id] = [c.id for c in rich_worst]
+    else:
+        # Request human to select
+        socketio.emit('select_cards_to_give', {
+            'rank': 'rich',
+            'requiredCount': 1,
+            'hand': [card_to_dict(c) for c in rich.hand]
+        }, room=rich.sid)
+
+    # Check if all selections are ready (both bots)
+    check_selections_complete(room)
+
+
+def check_selections_complete(room: GameRoom):
+    """Check if all card selections are complete and perform exchange"""
+    players_list = list(room.players.values())
+
+    tycoon = next((p for p in players_list if p.rank == 'tycoon'), None)
+    rich = next((p for p in players_list if p.rank == 'rich'), None)
+
+    if not tycoon or not rich:
+        return
+
+    # Check if both have submitted selections
+    if tycoon.id not in room.pending_selections or rich.id not in room.pending_selections:
+        return
+
+    # Both selections are in, perform the exchange
     perform_card_exchange(room)
+
+
+def perform_card_exchange(room: GameRoom):
+    """Perform card exchange between ranks using selected cards"""
+    players_list = list(room.players.values())
+
+    tycoon = next((p for p in players_list if p.rank == 'tycoon'), None)
+    rich = next((p for p in players_list if p.rank == 'rich'), None)
+    poor = next((p for p in players_list if p.rank == 'poor'), None)
+    beggar = next((p for p in players_list if p.rank == 'beggar'), None)
+
+    if not all([tycoon, rich, poor, beggar]):
+        finalize_round_start(room)
+        return
+
+    # Beggar gives 2 best to Tycoon (auto-selected)
+    beggar_best = get_best_cards(beggar.hand, 2)
+    beggar.hand = [c for c in beggar.hand if c not in beggar_best]
+    tycoon.hand.extend(beggar_best)
+
+    # Tycoon gives their selected cards to Beggar
+    tycoon_selected_ids = room.pending_selections.get(tycoon.id, [])
+    tycoon_gives = [c for c in tycoon.hand if c.id in tycoon_selected_ids]
+    tycoon.hand = [c for c in tycoon.hand if c.id not in tycoon_selected_ids]
+    beggar.hand.extend(tycoon_gives)
+
+    # Poor gives 1 best to Rich (auto-selected)
+    poor_best = get_best_cards(poor.hand, 1)
+    poor.hand = [c for c in poor.hand if c not in poor_best]
+    rich.hand.extend(poor_best)
+
+    # Rich gives their selected card to Poor
+    rich_selected_ids = room.pending_selections.get(rich.id, [])
+    rich_gives = [c for c in rich.hand if c.id in rich_selected_ids]
+    rich.hand = [c for c in rich.hand if c.id not in rich_selected_ids]
+    poor.hand.extend(rich_gives)
+
+    # Clear pending selections
+    room.pending_selections = {}
+
+    # Emit card exchange event to all players
+    exchange_data = {
+        'beggarGives': [card_to_dict(c) for c in beggar_best],
+        'tycoonGives': [card_to_dict(c) for c in tycoon_gives],
+        'poorGives': [card_to_dict(c) for c in poor_best],
+        'richGives': [card_to_dict(c) for c in rich_gives]
+    }
+
+    for pid, p in room.players.items():
+        if p.sid:
+            socketio.emit('card_exchange', exchange_data, room=p.sid)
+
+    # Finalize round start after a brief delay for animation
+    socketio.sleep(0.5)
+    finalize_round_start(room)
+
+
+def finalize_round_start(room: GameRoom):
+    """Finalize round start after card exchange"""
+    players_list = list(room.players.values())
+    players_list.sort(key=lambda p: p.seat_position)
 
     # Sort hands
     for player in players_list:
@@ -859,49 +1030,11 @@ def start_next_round(room: GameRoom):
     room.finish_order = []
     room.is_revolution = False
 
-def perform_card_exchange(room: GameRoom):
-    """Perform card exchange between ranks"""
-    players_list = list(room.players.values())
+    # Broadcast game state
+    broadcast_game_state(room)
 
-    tycoon = next((p for p in players_list if p.rank == 'tycoon'), None)
-    rich = next((p for p in players_list if p.rank == 'rich'), None)
-    poor = next((p for p in players_list if p.rank == 'poor'), None)
-    beggar = next((p for p in players_list if p.rank == 'beggar'), None)
-
-    if not all([tycoon, rich, poor, beggar]):
-        return
-
-    # Beggar gives 2 best to Tycoon
-    beggar_best = get_best_cards(beggar.hand, 2)
-    beggar.hand = [c for c in beggar.hand if c not in beggar_best]
-    tycoon.hand.extend(beggar_best)
-
-    # Tycoon gives 2 worst to Beggar
-    tycoon_worst = get_worst_cards(tycoon.hand, 2)
-    tycoon.hand = [c for c in tycoon.hand if c not in tycoon_worst]
-    beggar.hand.extend(tycoon_worst)
-
-    # Poor gives 1 best to Rich
-    poor_best = get_best_cards(poor.hand, 1)
-    poor.hand = [c for c in poor.hand if c not in poor_best]
-    rich.hand.extend(poor_best)
-
-    # Rich gives 1 worst to Poor
-    rich_worst = get_worst_cards(rich.hand, 1)
-    rich.hand = [c for c in rich.hand if c not in rich_worst]
-    poor.hand.extend(rich_worst)
-
-    # Emit card exchange event to all players
-    exchange_data = {
-        'beggarGives': [card_to_dict(c) for c in beggar_best],
-        'tycoonGives': [card_to_dict(c) for c in tycoon_worst],
-        'poorGives': [card_to_dict(c) for c in poor_best],
-        'richGives': [card_to_dict(c) for c in rich_worst]
-    }
-
-    for pid, p in room.players.items():
-        if p.sid:
-            socketio.emit('card_exchange', exchange_data, room=p.sid)
+    # Process bot turns
+    process_bot_turns(room)
 
 def process_bot_turns(room: GameRoom):
     """Process bot turns until a human player's turn"""

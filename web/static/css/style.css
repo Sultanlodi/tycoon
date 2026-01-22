@@ -633,71 +633,201 @@ body {
 
 /* Persona 5 Joker Card */
 .card.joker {
-    background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 50%, #0a0a0a 100%);
+    background: #0a0a0a;
     border: 2px solid var(--p5-red);
     color: var(--p5-red);
     position: relative;
     overflow: hidden;
-    box-shadow: 0 0 10px rgba(255, 10, 10, 0.5);
+    box-shadow:
+        0 0 15px rgba(255, 10, 10, 0.6),
+        inset 0 0 30px rgba(255, 10, 10, 0.1);
 }
 
+/* Diagonal red accent lines */
 .card.joker::before {
     content: '';
     position: absolute;
-    top: -50%;
-    left: -50%;
-    width: 200%;
-    height: 200%;
-    background: repeating-linear-gradient(
-        45deg,
-        transparent,
-        transparent 5px,
-        rgba(255, 10, 10, 0.1) 5px,
-        rgba(255, 10, 10, 0.1) 10px
-    );
-    animation: jokerStripes 20s linear infinite;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background:
+        linear-gradient(135deg, transparent 40%, rgba(255, 10, 10, 0.15) 50%, transparent 60%),
+        linear-gradient(-135deg, transparent 40%, rgba(255, 10, 10, 0.1) 50%, transparent 60%);
     pointer-events: none;
 }
 
-@keyframes jokerStripes {
-    0% { transform: translate(0, 0); }
-    100% { transform: translate(50px, 50px); }
+/* Animated glow border */
+.card.joker::after {
+    content: '';
+    position: absolute;
+    top: -2px;
+    left: -2px;
+    right: -2px;
+    bottom: -2px;
+    background: linear-gradient(45deg,
+        var(--p5-red),
+        transparent,
+        var(--p5-red),
+        transparent,
+        var(--p5-red));
+    background-size: 400% 400%;
+    z-index: -1;
+    animation: jokerGlow 3s ease infinite;
+    opacity: 0.7;
+}
+
+@keyframes jokerGlow {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
 }
 
 .card.joker .corner {
     color: var(--p5-red);
     font-weight: 900;
-    text-shadow: 0 0 5px rgba(255, 10, 10, 0.8);
-    z-index: 1;
+    text-shadow:
+        0 0 8px rgba(255, 10, 10, 0.9),
+        0 0 15px rgba(255, 10, 10, 0.5);
+    z-index: 2;
     position: relative;
 }
 
+/* Phantom Thief Mask Icon */
 .card.joker .center {
-    font-size: 9px;
-    font-weight: 900;
-    transform: translate(-50%, -50%) skewX(-5deg);
-    color: var(--p5-white);
-    text-shadow:
-        2px 2px 0 var(--p5-red),
-        0 0 10px rgba(255, 10, 10, 0.8);
-    letter-spacing: 1px;
-    z-index: 1;
-    position: relative;
+    font-size: 0;
+    width: 32px;
+    height: 18px;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 2;
+}
+
+/* Mask shape */
+.card.joker .center::before {
+    content: '';
+    position: absolute;
+    width: 32px;
+    height: 14px;
+    background: var(--p5-red);
+    border-radius: 50% 50% 45% 45%;
+    top: 0;
+    left: 0;
+    box-shadow:
+        0 0 10px rgba(255, 10, 10, 0.8),
+        0 0 20px rgba(255, 10, 10, 0.4);
+    /* Eye holes */
+    -webkit-mask:
+        radial-gradient(ellipse 6px 5px at 25% 55%, transparent 90%, black 100%),
+        radial-gradient(ellipse 6px 5px at 75% 55%, transparent 90%, black 100%),
+        linear-gradient(black, black);
+    -webkit-mask-composite: destination-out;
+    mask:
+        radial-gradient(ellipse 6px 5px at 25% 55%, transparent 90%, black 100%),
+        radial-gradient(ellipse 6px 5px at 75% 55%, transparent 90%, black 100%),
+        linear-gradient(black, black);
+    mask-composite: exclude;
+}
+
+/* Mask point/nose */
+.card.joker .center::after {
+    content: '';
+    position: absolute;
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 8px solid var(--p5-red);
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    filter: drop-shadow(0 0 5px rgba(255, 10, 10, 0.8));
 }
 
 .card.joker:hover {
-    box-shadow: 0 0 20px rgba(255, 10, 10, 0.8);
+    box-shadow:
+        0 0 25px rgba(255, 10, 10, 0.9),
+        0 0 50px rgba(255, 10, 10, 0.4),
+        inset 0 0 30px rgba(255, 10, 10, 0.2);
     transform: translateY(-8px) scale(1.02);
 }
 
 .card.joker.selected {
-    box-shadow: 0 0 30px rgba(255, 10, 10, 1);
     animation: jokerPulse 0.5s ease-in-out infinite alternate;
 }
 
 @keyframes jokerPulse {
-    0% { box-shadow: 0 0 20px rgba(255, 10, 10, 0.8); }
-    100% { box-shadow: 0 0 35px rgba(255, 10, 10, 1); }
+    0% {
+        box-shadow:
+            0 0 20px rgba(255, 10, 10, 0.8),
+            0 0 40px rgba(255, 10, 10, 0.4),
+            inset 0 0 20px rgba(255, 10, 10, 0.15);
+    }
+    100% {
+        box-shadow:
+            0 0 35px rgba(255, 10, 10, 1),
+            0 0 60px rgba(255, 10, 10, 0.6),
+            inset 0 0 30px rgba(255, 10, 10, 0.25);
+    }
+}
+
+/* Card Back (for hidden exchange) */
+.card.card-back {
+    background: linear-gradient(135deg, #1a0a0a 0%, #0a0a0a 50%, #1a0a0a 100%);
+    border: 2px solid var(--p5-red);
+    position: relative;
+    overflow: hidden;
+}
+
+.card-back-design {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    right: 4px;
+    bottom: 4px;
+    border: 1px solid var(--p5-red);
+    background:
+        repeating-linear-gradient(
+            45deg,
+            transparent,
+            transparent 4px,
+            rgba(255, 10, 10, 0.15) 4px,
+            rgba(255, 10, 10, 0.15) 8px
+        ),
+        repeating-linear-gradient(
+            -45deg,
+            transparent,
+            transparent 4px,
+            rgba(255, 10, 10, 0.1) 4px,
+            rgba(255, 10, 10, 0.1) 8px
+        );
+}
+
+.card-back-design::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--p5-red);
+    border-radius: 50%;
+    background: rgba(255, 10, 10, 0.2);
+    box-shadow: 0 0 10px rgba(255, 10, 10, 0.5);
+}
+
+.card-back-design::after {
+    content: '?';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: var(--p5-red);
+    font-size: 14px;
+    font-weight: 900;
+    text-shadow: 0 0 5px rgba(255, 10, 10, 0.8);
 }
 
 /* Pile cards */
@@ -1034,6 +1164,18 @@ body {
 
 #exchange-screen.active {
     display: block;
+    animation: exchangeSlideIn 0.5s ease-out;
+}
+
+@keyframes exchangeSlideIn {
+    0% {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .exchange-container {
@@ -1108,6 +1250,247 @@ body {
 @keyframes arrowPulse {
     0%, 100% { transform: translateY(0); opacity: 1; }
     50% { transform: translateY(5px); opacity: 0.5; }
+}
+
+/* Exchange row with swap animation */
+.exchange-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+
+.exchange-side {
+    flex: 1;
+    text-align: center;
+}
+
+.exchange-swap-icon {
+    font-size: 28px;
+    color: var(--p5-yellow);
+    animation: swapPulse 1s ease-in-out infinite;
+    text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+}
+
+@keyframes swapPulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.2); opacity: 0.7; }
+}
+
+.exchange-cards .card {
+    animation: cardSwapIn 0.6s ease-out both;
+}
+
+.exchange-cards .card:nth-child(1) { animation-delay: 0.2s; }
+.exchange-cards .card:nth-child(2) { animation-delay: 0.4s; }
+
+@keyframes cardSwapIn {
+    0% {
+        transform: translateY(-40px) rotate(-15deg) scale(0.5);
+        opacity: 0;
+    }
+    60% {
+        transform: translateY(5px) rotate(3deg) scale(1.05);
+    }
+    100% {
+        transform: translateY(0) rotate(0) scale(1);
+        opacity: 1;
+    }
+}
+
+/* Glow effect on exchange cards */
+.exchange-cards .card {
+    box-shadow: 0 0 15px rgba(255, 10, 10, 0.5);
+}
+
+/* Left side cards slide from left */
+.exchange-side:first-child .exchange-cards .card {
+    animation: cardSwapFromLeft 0.6s ease-out both;
+}
+
+/* Right side cards slide from right */
+.exchange-side:last-child .exchange-cards .card {
+    animation: cardSwapFromRight 0.6s ease-out both;
+}
+
+.exchange-side:first-child .exchange-cards .card:nth-child(1) { animation-delay: 0.3s; }
+.exchange-side:first-child .exchange-cards .card:nth-child(2) { animation-delay: 0.5s; }
+.exchange-side:last-child .exchange-cards .card:nth-child(1) { animation-delay: 0.3s; }
+.exchange-side:last-child .exchange-cards .card:nth-child(2) { animation-delay: 0.5s; }
+
+@keyframes cardSwapFromLeft {
+    0% {
+        transform: translateX(-60px) rotate(-20deg) scale(0.5);
+        opacity: 0;
+    }
+    70% {
+        transform: translateX(8px) rotate(5deg) scale(1.08);
+    }
+    100% {
+        transform: translateX(0) rotate(0) scale(1);
+        opacity: 1;
+    }
+}
+
+@keyframes cardSwapFromRight {
+    0% {
+        transform: translateX(60px) rotate(20deg) scale(0.5);
+        opacity: 0;
+    }
+    70% {
+        transform: translateX(-8px) rotate(-5deg) scale(1.08);
+    }
+    100% {
+        transform: translateX(0) rotate(0) scale(1);
+        opacity: 1;
+    }
+}
+
+/* ============== Card Selection Screen ============== */
+#card-select-screen {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--p5-black);
+    z-index: 2600;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+#card-select-screen.active {
+    display: block;
+    animation: selectSlideIn 0.4s ease-out;
+}
+
+@keyframes selectSlideIn {
+    0% {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.card-select-container {
+    text-align: center;
+    max-width: 500px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 20px;
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.card-select-title {
+    font-size: 28px;
+    color: var(--p5-red);
+    text-transform: uppercase;
+    letter-spacing: 4px;
+    margin-bottom: 10px;
+}
+
+.card-select-subtitle {
+    color: var(--p5-yellow);
+    margin-bottom: 20px;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+.card-select-hand {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 30px;
+    padding: 20px;
+    background: rgba(255, 10, 10, 0.1);
+    border: 2px solid var(--p5-red);
+    min-height: 100px;
+}
+
+.card-select-hand .card {
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.card-select-hand .card:hover {
+    transform: translateY(-10px);
+}
+
+.card-select-hand .card.selected-to-give {
+    transform: translateY(-15px);
+    border-color: var(--p5-yellow);
+    box-shadow: 0 0 15px rgba(255, 215, 0, 0.6);
+}
+
+.card-select-chosen {
+    margin-bottom: 20px;
+}
+
+.card-select-chosen p {
+    color: rgba(255, 255, 255, 0.7);
+    margin-bottom: 10px;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+
+.card-select-selected {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    min-height: 80px;
+    padding: 15px;
+    background: rgba(255, 215, 0, 0.1);
+    border: 2px dashed var(--p5-yellow);
+}
+
+.card-select-selected .card {
+    animation: selectedCardPop 0.3s ease-out;
+}
+
+@keyframes selectedCardPop {
+    0% { transform: scale(0); }
+    70% { transform: scale(1.1); }
+    100% { transform: scale(1); }
+}
+
+#card-select-confirm {
+    margin-top: 10px;
+}
+
+#card-select-confirm:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* Mobile adjustments for card selection */
+@media (max-height: 700px) {
+    .card-select-container {
+        justify-content: flex-start;
+        padding-top: 15px;
+    }
+
+    .card-select-title {
+        font-size: 22px;
+    }
+
+    .card-select-hand {
+        padding: 15px;
+        min-height: 80px;
+    }
+
+    .card-select-selected {
+        min-height: 70px;
+        padding: 10px;
+    }
 }
 
 /* Mobile adjustments for exchange screen */

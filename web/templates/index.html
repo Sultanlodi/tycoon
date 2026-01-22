@@ -133,7 +133,24 @@
             </div>
         </div>
 
-        <!-- Card Exchange Screen -->
+        <!-- Card Selection Screen (for Tycoon/Rich to choose cards to give) -->
+        <div id="card-select-screen">
+            <div class="card-select-container">
+                <h2 class="card-select-title">Choose Cards to Give</h2>
+                <p class="card-select-subtitle" id="card-select-info">Select cards to give away</p>
+
+                <div class="card-select-hand" id="card-select-hand"></div>
+
+                <div class="card-select-chosen">
+                    <p>Selected to give:</p>
+                    <div class="card-select-selected" id="card-select-selected"></div>
+                </div>
+
+                <button class="btn-primary" id="card-select-confirm" onclick="confirmCardSelection()" disabled>Confirm Selection</button>
+            </div>
+        </div>
+
+        <!-- Card Exchange Screen (shows the swap animation) -->
         <div id="exchange-screen">
             <div class="exchange-container">
                 <h2 class="exchange-title">Card Exchange</h2>
@@ -141,20 +158,32 @@
 
                 <div class="exchange-section" id="tycoon-beggar-exchange">
                     <h3>Tycoon &lt;-&gt; Beggar</h3>
-                    <p class="exchange-label">Beggar gives 2 best cards</p>
-                    <div class="exchange-cards" id="beggar-gives"></div>
-                    <div class="exchange-arrow">v</div>
-                    <p class="exchange-label">Tycoon gives 2 worst cards</p>
-                    <div class="exchange-cards" id="tycoon-gives"></div>
+                    <div class="exchange-row">
+                        <div class="exchange-side">
+                            <p class="exchange-label">Beggar gives</p>
+                            <div class="exchange-cards" id="beggar-gives"></div>
+                        </div>
+                        <div class="exchange-swap-icon">&#8644;</div>
+                        <div class="exchange-side">
+                            <p class="exchange-label">Tycoon gives</p>
+                            <div class="exchange-cards" id="tycoon-gives"></div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="exchange-section" id="rich-poor-exchange">
                     <h3>Rich &lt;-&gt; Poor</h3>
-                    <p class="exchange-label">Poor gives 1 best card</p>
-                    <div class="exchange-cards" id="poor-gives"></div>
-                    <div class="exchange-arrow">v</div>
-                    <p class="exchange-label">Rich gives 1 worst card</p>
-                    <div class="exchange-cards" id="rich-gives"></div>
+                    <div class="exchange-row">
+                        <div class="exchange-side">
+                            <p class="exchange-label">Poor gives</p>
+                            <div class="exchange-cards" id="poor-gives"></div>
+                        </div>
+                        <div class="exchange-swap-icon">&#8644;</div>
+                        <div class="exchange-side">
+                            <p class="exchange-label">Rich gives</p>
+                            <div class="exchange-cards" id="rich-gives"></div>
+                        </div>
+                    </div>
                 </div>
 
                 <button class="btn-primary" id="exchange-continue-btn" onclick="acknowledgeExchange()">Continue</button>
