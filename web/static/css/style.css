@@ -630,17 +630,74 @@ body {
 
 .card.hearts, .card.diamonds { color: var(--p5-red); }
 .card.clubs, .card.spades { color: var(--p5-black); }
+
+/* Persona 5 Joker Card */
 .card.joker {
-    color: #9b59b6;
-    background: linear-gradient(135deg, #fff 0%, #ffe6e6 100%);
-    border-color: var(--p5-red);
+    background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 50%, #0a0a0a 100%);
+    border: 2px solid var(--p5-red);
+    color: var(--p5-red);
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 0 10px rgba(255, 10, 10, 0.5);
+}
+
+.card.joker::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: repeating-linear-gradient(
+        45deg,
+        transparent,
+        transparent 5px,
+        rgba(255, 10, 10, 0.1) 5px,
+        rgba(255, 10, 10, 0.1) 10px
+    );
+    animation: jokerStripes 20s linear infinite;
+    pointer-events: none;
+}
+
+@keyframes jokerStripes {
+    0% { transform: translate(0, 0); }
+    100% { transform: translate(50px, 50px); }
+}
+
+.card.joker .corner {
+    color: var(--p5-red);
+    font-weight: 900;
+    text-shadow: 0 0 5px rgba(255, 10, 10, 0.8);
+    z-index: 1;
+    position: relative;
 }
 
 .card.joker .center {
-    font-size: 10px;
-    font-weight: bold;
-    transform: translate(-50%, -50%) rotate(-15deg);
-    color: var(--p5-red);
+    font-size: 9px;
+    font-weight: 900;
+    transform: translate(-50%, -50%) skewX(-5deg);
+    color: var(--p5-white);
+    text-shadow:
+        2px 2px 0 var(--p5-red),
+        0 0 10px rgba(255, 10, 10, 0.8);
+    letter-spacing: 1px;
+    z-index: 1;
+    position: relative;
+}
+
+.card.joker:hover {
+    box-shadow: 0 0 20px rgba(255, 10, 10, 0.8);
+    transform: translateY(-8px) scale(1.02);
+}
+
+.card.joker.selected {
+    box-shadow: 0 0 30px rgba(255, 10, 10, 1);
+    animation: jokerPulse 0.5s ease-in-out infinite alternate;
+}
+
+@keyframes jokerPulse {
+    0% { box-shadow: 0 0 20px rgba(255, 10, 10, 0.8); }
+    100% { box-shadow: 0 0 35px rgba(255, 10, 10, 1); }
 }
 
 /* Pile cards */
