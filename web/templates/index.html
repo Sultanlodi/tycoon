@@ -13,7 +13,7 @@
         <div id="home-screen" class="screen active">
             <div class="container">
                 <h1 class="logo">TYCOON</h1>
-                <p class="subtitle">The Classic Card Game</p>
+                <p class="subtitle">Take Your Heart</p>
 
                 <div class="form-group">
                     <label>Your Name</label>
@@ -31,25 +31,25 @@
 
                 <div class="game-options">
                     <button class="game-btn offline-btn" onclick="playOffline()">
-                        <span class="btn-icon">🤖</span>
+                        <span class="btn-icon">[AI]</span>
                         <span class="btn-title">Play vs Bots</span>
                         <span class="btn-desc">Practice with AI opponents</span>
                     </button>
 
                     <button class="game-btn create-btn" onclick="showCreateModal()">
-                        <span class="btn-icon">🎯</span>
+                        <span class="btn-icon">[+]</span>
                         <span class="btn-title">Create Room</span>
                         <span class="btn-desc">Host a game for friends</span>
                     </button>
 
                     <button class="game-btn join-btn" onclick="showJoinModal()">
-                        <span class="btn-icon">🔗</span>
+                        <span class="btn-icon">[>]</span>
                         <span class="btn-title">Join Room</span>
                         <span class="btn-desc">Enter a room code</span>
                     </button>
                 </div>
 
-                <button class="how-to-play" onclick="showRules()">📖 How to Play</button>
+                <button class="how-to-play" onclick="showRules()">[?] How to Play</button>
             </div>
         </div>
 
@@ -84,7 +84,7 @@
             <div class="game-header">
                 <div class="round-info">Round <span id="round-number">1</span>/3</div>
                 <div id="revolution-banner" class="revolution-banner" style="display: none;">REVOLUTION!</div>
-                <button class="leave-btn" onclick="leaveGame()">✕</button>
+                <button class="leave-btn" onclick="leaveGame()">X</button>
             </div>
 
             <div class="game-board">
@@ -126,20 +126,80 @@
 
         <!-- Round End Screen -->
         <div id="round-end-screen" class="screen">
-            <div class="container scoreboard">
+            <div class="scoreboard">
                 <h2>Round <span id="round-end-number">1</span> Complete!</h2>
                 <div class="rankings" id="rankings"></div>
                 <button class="btn-primary" onclick="continueGame()">Continue</button>
             </div>
         </div>
 
+        <!-- Card Exchange Screen -->
+        <div id="exchange-screen">
+            <div class="exchange-container">
+                <h2 class="exchange-title">Card Exchange</h2>
+                <p class="exchange-subtitle">Cards are being traded based on rank</p>
+
+                <div class="exchange-section" id="tycoon-beggar-exchange">
+                    <h3>Tycoon &lt;-&gt; Beggar</h3>
+                    <p class="exchange-label">Beggar gives 2 best cards</p>
+                    <div class="exchange-cards" id="beggar-gives"></div>
+                    <div class="exchange-arrow">v</div>
+                    <p class="exchange-label">Tycoon gives 2 worst cards</p>
+                    <div class="exchange-cards" id="tycoon-gives"></div>
+                </div>
+
+                <div class="exchange-section" id="rich-poor-exchange">
+                    <h3>Rich &lt;-&gt; Poor</h3>
+                    <p class="exchange-label">Poor gives 1 best card</p>
+                    <div class="exchange-cards" id="poor-gives"></div>
+                    <div class="exchange-arrow">v</div>
+                    <p class="exchange-label">Rich gives 1 worst card</p>
+                    <div class="exchange-cards" id="rich-gives"></div>
+                </div>
+
+                <button class="btn-primary" id="exchange-continue-btn" onclick="acknowledgeExchange()">Continue</button>
+            </div>
+        </div>
+
         <!-- Game End Screen -->
         <div id="game-end-screen" class="screen">
-            <div class="container scoreboard">
+            <div class="scoreboard">
                 <h2>Game Over!</h2>
                 <div class="final-rankings" id="final-rankings"></div>
                 <button class="btn-primary" onclick="playAgain()">Play Again</button>
                 <button class="btn-secondary" onclick="goHome()">Home</button>
+            </div>
+        </div>
+
+        <!-- 8 Card Cutscene -->
+        <div id="eight-cutscene" class="cutscene eight-cutscene" style="display: none;">
+            <div class="cutscene-content">
+                <h1>8</h1>
+                <p>Pile Cleared!</p>
+            </div>
+        </div>
+
+        <!-- Revolution Cutscene -->
+        <div id="revolution-cutscene" class="cutscene revolution-cutscene" style="display: none;">
+            <div class="cutscene-content">
+                <h1>REVOLUTION</h1>
+                <p>Order Reversed!</p>
+            </div>
+        </div>
+
+        <!-- 3 Counters Joker Cutscene -->
+        <div id="counter-cutscene" class="cutscene counter-cutscene" style="display: none;">
+            <div class="cutscene-content">
+                <h1>3</h1>
+                <p>Joker Countered!</p>
+            </div>
+        </div>
+
+        <!-- Tycoon Demotion Cutscene -->
+        <div id="demotion-cutscene" class="cutscene demotion-cutscene" style="display: none;">
+            <div class="cutscene-content">
+                <h1>DEMOTED!</h1>
+                <p>Tycoon falls to Beggar<span class="demotion-name" id="demoted-name"></span></p>
             </div>
         </div>
 
@@ -159,7 +219,7 @@
                     <p>4 players, 54 cards (including 2 jokers), 3 rounds.</p>
 
                     <h3>Card Hierarchy</h3>
-                    <p>3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → J → Q → K → A → 2 → Joker</p>
+                    <p>3 - 4 - 5 - 6 - 7 - 8 - 9 - 10 - J - Q - K - A - 2 - Joker</p>
 
                     <h3>Gameplay</h3>
                     <ul>

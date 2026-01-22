@@ -104,6 +104,30 @@ function connectSocket() {
             showGameEnd();
         }
     });
+
+    // Listen for special card events
+    socket.on('eight_played', (data) => {
+        showCutscene('eight-cutscene');
+    });
+
+    socket.on('revolution_triggered', (data) => {
+        showCutscene('revolution-cutscene');
+    });
+
+    socket.on('joker_countered', (data) => {
+        showCutscene('counter-cutscene');
+    });
+
+    // Listen for card exchange event
+    socket.on('card_exchange', (data) => {
+        showCardExchange(data);
+    });
+
+    // Listen for tycoon demotion event
+    socket.on('tycoon_demoted', (data) => {
+        document.getElementById('demoted-name').textContent = data.tycoonName;
+        showCutscene('demotion-cutscene');
+    });
 }
 
 // ============== Screen Navigation ==============
@@ -508,6 +532,72 @@ function continueGame() {
 function playAgain() {
     // Reset and start new game
     goHome();
+}
+
+// ============== Card Exchange ==============
+function showCardExchange(data) {
+    const screen = document.getElementById('exchange-screen');
+
+    // Render beggar's cards (giving to tycoon)
+    const beggarGives = document.getElementById('beggar-gives');
+    beggarGives.innerHTML = '';
+    if (data.beggarGives) {
+        data.beggarGives.forEach(card => {
+            beggarGives.appendChild(createCardElement(card, false, false));
+        });
+    }
+
+    // Render tycoon's cards (giving to beggar)
+    const tycoonGives = document.getElementById('tycoon-gives');
+    tycoonGives.innerHTML = '';
+    if (data.tycoonGives) {
+        data.tycoonGives.forEach(card => {
+            tycoonGives.appendChild(createCardElement(card, false, false));
+        });
+    }
+
+    // Render poor's cards (giving to rich)
+    const poorGives = document.getElementById('poor-gives');
+    poorGives.innerHTML = '';
+    if (data.poorGives) {
+        data.poorGives.forEach(card => {
+            poorGives.appendChild(createCardElement(card, false, false));
+        });
+    }
+
+    // Render rich's cards (giving to poor)
+    const richGives = document.getElementById('rich-gives');
+    richGives.innerHTML = '';
+    if (data.richGives) {
+        data.richGives.forEach(card => {
+            richGives.appendChild(createCardElement(card, false, false));
+        });
+    }
+
+    screen.classList.add('active');
+}
+
+function acknowledgeExchange() {
+    document.getElementById('exchange-screen').classList.remove('active');
+    showScreen('game-screen');
+}
+
+// ============== Cutscene Animations ==============
+function showCutscene(cutsceneId) {
+    const cutscene = document.getElementById(cutsceneId);
+    if (!cutscene) return;
+
+    cutscene.style.display = 'flex';
+
+    // Remove and re-add to restart animation
+    cutscene.style.animation = 'none';
+    cutscene.offsetHeight; // Trigger reflow
+    cutscene.style.animation = 'cutsceneFade 1.5s ease-out forwards';
+
+    // Hide after animation completes
+    setTimeout(() => {
+        cutscene.style.display = 'none';
+    }, 1500);
 }
 
 // ============== Utilities ==============

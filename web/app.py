@@ -99,7 +99,7 @@ rooms: Dict[str, GameRoom] = {}
 # ============== Deck Functions ==============
 
 def build_deck() -> List[Card]:
-    """Build a 54-card deck (52 standard + 2 jokers)"""
+    """54-card deck (52 standard + 2 jokers)"""
     deck = []
     suits = ['hearts', 'diamonds', 'clubs', 'spades']
     values = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]  # 3 through 2
@@ -223,25 +223,17 @@ def get_worst_cards(hand: List[Card], count: int, is_revolution: bool = False) -
 
 # ============== Bot AI ==============
 
-BOT_NAMES = ['Alice', 'Bob', 'Charlie', 'Diana', 'Eve', 'Frank', 'Grace', 'Henry']
+BOT_NAMES = ['Ehsan Bot', 'Justin Bot', 'Sultan Bot', 'Denise Bot', 'Amer Bot', 'Zak Bot', 'Josh Bot', 'Reese Bot', 'Horacio Bot']
 
 def make_bot_decision(player: Player, room: GameRoom) -> tuple[str, Optional[List[Card]]]:
-    """Bot AI decision making"""
+    """Bot AI decision making - smarter bots that play pairs, triples, quads"""
     hand = player.hand
     pile = room.current_pile
     is_revolution = room.is_revolution
+    difficulty = room.bot_difficulty
 
-    if not pile:
-        # Starting a new turn - play lowest card(s)
-        if hand:
-            lowest_value = min(c.value for c in hand)
-            same_value = [c for c in hand if c.value == lowest_value]
-            return 'play', same_value[:1]  # Play just one card
+    if not hand:
         return 'pass', None
-
-    # Try to play
-    pile_count = len(pile)
-    pile_value = get_effective_value(pile)
 
     # Group cards by value
     value_groups = {}
@@ -250,19 +242,138 @@ def make_bot_decision(player: Player, room: GameRoom) -> tuple[str, Optional[Lis
             value_groups[card.value] = []
         value_groups[card.value].append(card)
 
-    # Find playable groups
+    # Sort values by strength (weakest first in normal, strongest first in revolution)
+    sorted_values = sorted(value_groups.keys(), reverse=is_revolution)
+
+    if not pile:
+        # Starting a new turn - choose what to lead with
+        return bot_choose_lead(value_groups, sorted_values, is_revolution, difficulty, hand)
+
+    # Responding to existing pile
+    pile_count = len(pile)
+    pile_value = get_effective_value(pile)
+
+    return bot_choose_response(value_groups, pile_count, pile_value, is_revolution, difficulty)
+
+
+def bot_choose_lead(value_groups: dict, sorted_values: list, is_revolution: bool, difficulty: str, hand: list) -> tuple[str, Optional[List[Card]]]:
+    """Bot chooses what to lead with when pile is empty"""
+
+    # Find all possible plays (singles, pairs, triples, quads)
+    possible_plays = []
+
+    for value in sorted_values:
+        cards = value_groups[value]
+        # Add all possible group sizes for this value
+        for count in range(1, len(cards) + 1):
+            possible_plays.append((value, cards[:count], count))
+
+    if not possible_plays:
+        return 'pass', None
+
+    # Strategy based on difficulty
+    if difficulty == 'easy':
+        # Easy: Just play single lowest cards
+        for value in sorted_values:
+            cards = value_groups[value]
+            return 'play', cards[:1]
+
+    elif difficulty == 'medium':
+        # Medium: Prefer pairs/triples of low cards, but not always
+        # Try to get rid of multiples of weak cards first
+        for value in sorted_values:
+            cards = value_groups[value]
+            if len(cards) >= 2:
+                # Play pair or triple of weak cards
+                play_count = min(len(cards), 3)
+                return 'play', cards[:play_count]
+        # Fallback to single
+        for value in sorted_values:
+            return 'play', value_groups[value][:1]
+
+    else:  # hard
+        # Hard: Strategic play - consider hand composition
+        # If we have 4 of a kind, consider playing it for revolution
+        for value in sorted_values:
+            cards = value_groups[value]
+            if len(cards) == 4 and value not in [8, 15, 16]:  # Save 8s, 2s, jokers
+                # Play 4 of a kind to trigger revolution if beneficial
+                if is_revolution and value <= 7:  # In revolution, low cards are strong
+                    return 'play', cards[:4]
+                elif not is_revolution and value >= 10:
+                    return 'play', cards[:4]
+
+        # Play pairs/triples of medium-low cards to control the game
+        for value in sorted_values:
+            cards = value_groups[value]
+            if len(cards) >= 2 and value not in [8, 15, 16]:
+                return 'play', cards[:len(cards)]  # Play all of same value
+
+        # Play single low card
+        for value in sorted_values:
+            if value not in [8, 15, 16]:  # Save special cards
+                return 'play', value_groups[value][:1]
+
+        # Fallback: play anything
+        for value in sorted_values:
+            return 'play', value_groups[value][:1]
+
+    return 'pass', None
+
+
+def bot_choose_response(value_groups: dict, pile_count: int, pile_value: int, is_revolution: bool, difficulty: str) -> tuple[str, Optional[List[Card]]]:
+    """Bot chooses how to respond to existing pile"""
+
+    # Find playable groups that can beat the pile
     playable = []
+
     for value, cards in value_groups.items():
         if len(cards) >= pile_count:
+            # Check if this value beats the pile
             if compare_card_values(value, pile_value, is_revolution) > 0:
                 playable.append((value, cards[:pile_count]))
             # Check 3 counters joker
-            elif pile_value == 16 and value == 3:
+            elif pile_value == 16 and value == 3 and len(cards) >= pile_count:
                 playable.append((value, cards[:pile_count]))
 
-    if playable:
-        # Play lowest playable
-        playable.sort(key=lambda x: x[0], reverse=is_revolution)
+    if not playable:
+        return 'pass', None
+
+    # Sort playable options by value
+    playable.sort(key=lambda x: x[0], reverse=is_revolution)
+
+    if difficulty == 'easy':
+        # Easy: Always play lowest possible
+        return 'play', playable[0][1]
+
+    elif difficulty == 'medium':
+        # Medium: Usually play lowest, sometimes pass to conserve cards
+        # Pass 20% of the time if we have other options
+        import random
+        if len(playable) > 1 and random.random() < 0.2:
+            return 'pass', None
+        return 'play', playable[0][1]
+
+    else:  # hard
+        # Hard: Strategic decisions
+        import random
+
+        # If pile is 8, we must play (or pass and lose control)
+        if pile_value == 8:
+            return 'play', playable[0][1]
+
+        # Consider passing to let others fight
+        # Pass more often if we're in a good position (fewer cards)
+        hand_size = sum(len(cards) for cards in value_groups.values())
+        if hand_size <= 5 and random.random() < 0.3:
+            return 'pass', None
+
+        # If we have an 8 that can be played, prefer it (clears pile, we go again)
+        for value, cards in playable:
+            if value == 8:
+                return 'play', cards
+
+        # Otherwise play lowest to conserve strong cards
         return 'play', playable[0][1]
 
     return 'pass', None
@@ -563,12 +674,35 @@ def process_play(room: GameRoom, player: Player, cards: List[Card]):
     # Update revolution state
     if triggers_revolution:
         room.is_revolution = not room.is_revolution
+        # Emit revolution cutscene event
+        for pid, p in room.players.items():
+            if p.sid:
+                socketio.emit('revolution_triggered', {'player': player.name}, room=p.sid)
 
     # Check if player finished
     if not player.hand:
         player.has_finished = True
         room.finish_order.append(player.id)
         player.finish_order = len(room.finish_order)
+
+        # Tycoon demotion rule: If someone other than Tycoon finishes first in rounds 2+
+        if player.finish_order == 1 and room.current_round > 1:
+            players_list = list(room.players.values())
+            previous_tycoon = next((p for p in players_list if p.rank == 'tycoon'), None)
+
+            if previous_tycoon and previous_tycoon.id != player.id:
+                # Demote Tycoon to last place instantly
+                previous_tycoon.has_finished = True
+                room.finish_order.append(previous_tycoon.id)
+                previous_tycoon.finish_order = len(room.finish_order)
+
+                # Emit demotion animation
+                for pid, p in room.players.items():
+                    if p.sid:
+                        socketio.emit('tycoon_demoted', {
+                            'tycoonName': previous_tycoon.name,
+                            'newTycoonName': player.name
+                        }, room=p.sid)
 
     # Reset pass states
     players_list = list(room.players.values())
@@ -581,6 +715,17 @@ def process_play(room: GameRoom, player: Player, cards: List[Card]):
         room.discard_pile.extend(cards)
         room.current_pile = []
         room.current_pile_player_id = None
+
+        # Emit cutscene events
+        if eight_played:
+            for pid, p in room.players.items():
+                if p.sid:
+                    socketio.emit('eight_played', {'player': player.name}, room=p.sid)
+
+        if three_counters:
+            for pid, p in room.players.items():
+                if p.sid:
+                    socketio.emit('joker_countered', {'player': player.name}, room=p.sid)
 
         # If player finished, move to next
         if player.has_finished:
@@ -742,6 +887,18 @@ def perform_card_exchange(room: GameRoom):
     rich_worst = get_worst_cards(rich.hand, 1)
     rich.hand = [c for c in rich.hand if c not in rich_worst]
     poor.hand.extend(rich_worst)
+
+    # Emit card exchange event to all players
+    exchange_data = {
+        'beggarGives': [card_to_dict(c) for c in beggar_best],
+        'tycoonGives': [card_to_dict(c) for c in tycoon_worst],
+        'poorGives': [card_to_dict(c) for c in poor_best],
+        'richGives': [card_to_dict(c) for c in rich_worst]
+    }
+
+    for pid, p in room.players.items():
+        if p.sid:
+            socketio.emit('card_exchange', exchange_data, room=p.sid)
 
 def process_bot_turns(room: GameRoom):
     """Process bot turns until a human player's turn"""
