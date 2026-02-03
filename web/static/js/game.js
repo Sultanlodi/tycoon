@@ -1,37 +1,19 @@
 /**
- * Tycoon Card Game - Client JavaScript
+ * Tycoon Game Client
+ * ==================
+ * Handles all Tycoon-specific UI and socket events.
+ * Uses shared.js for: socket, gameState, session, showScreen, showToast, openModal, closeModal, goToPicker.
  */
 
-// ============== State ==============
-let socket = null;
-let gameState = {
-    playerId: null,
-    playerName: 'Player',
-    roomCode: null,
-    isHost: false,
-    difficulty: 'medium',
-    room: null,
-    selectedCards: [],
-    isMyTurn: false,
-};
-
-// ============== Constants ==============
-const SUIT_SYMBOLS = {
-    hearts: '♥',
-    diamonds: '♦',
-    clubs: '♣',
-    spades: '♠',
-};
-
-const VALUE_DISPLAY = {
-    3: '3', 4: '4', 5: '5', 6: '6', 7: '7', 8: '8', 9: '9', 10: '10',
-    11: 'J', 12: 'Q', 13: 'K', 14: 'A', 15: '2', 16: 'Joker'
-};
+// ============== Tycoon-specific state ==============
+gameState.selectedCards = [];
+gameState.isMyTurn = false;
+gameState.difficulty = 'medium';
 
 // ============== Initialization ==============
 document.addEventListener('DOMContentLoaded', () => {
-    // Generate unique player ID
-    gameState.playerId = 'player-' + Math.random().toString(36).substr(2, 9);
+    gameState.selectedGame = 'tycoon';
+    initShared();
 
     // Setup difficulty buttons
     document.querySelectorAll('.diff-btn').forEach(btn => {
@@ -42,40 +24,25 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // Connect to server
-    connectSocket();
+    connectSocket(registerTycoonEvents);
 });
 
-function connectSocket() {
-    // Connect to the server
-    const serverUrl = window.location.origin;
-    socket = io(serverUrl);
-
-    socket.on('connect', () => {
-        console.log('Connected to server');
-    });
-
-    socket.on('disconnect', () => {
-        console.log('Disconnected from server');
-        showToast('Connection lost. Reconnecting...');
-    });
-
-    socket.on('error', (data) => {
-        showToast(data.message);
-    });
-
+// ============== Socket Events ==============
+function registerTycoonEvents() {
     socket.on('room_created', (data) => {
         gameState.roomCode = data.code;
         gameState.isHost = true;
         gameState.room = data.room;
+        saveSession();
         showScreen('waiting-screen');
         updateWaitingRoom();
     });
 
     socket.on('room_joined', (data) => {
         gameState.roomCode = data.code;
-        gameState.isHost = false;
         gameState.room = data.room;
+        gameState.isHost = false;
+        saveSession();
         showScreen('waiting-screen');
         updateWaitingRoom();
     });
@@ -83,6 +50,13 @@ function connectSocket() {
     socket.on('player_joined', (data) => {
         if (gameState.room) {
             gameState.room.players.push(data.player);
+            updateWaitingRoom();
+        }
+    });
+
+    socket.on('player_left', (data) => {
+        if (gameState.room) {
+            gameState.room.players = gameState.room.players.filter(p => p.id !== data.playerId);
             updateWaitingRoom();
         }
     });
@@ -97,7 +71,6 @@ function connectSocket() {
         gameState.room = data.room;
         updateGameBoard();
 
-        // Check for phase changes
         if (data.room.gamePhase === 'round_end') {
             showRoundEnd();
         } else if (data.room.gamePhase === 'game_end') {
@@ -105,58 +78,51 @@ function connectSocket() {
         }
     });
 
-    // Listen for special card events
-    socket.on('eight_played', (data) => {
-        showCutscene('eight-cutscene');
-    });
+    socket.on('eight_played', () => showCutscene('eight-cutscene'));
+    socket.on('revolution_triggered', () => showCutscene('revolution-cutscene'));
+    socket.on('joker_countered', () => showCutscene('counter-cutscene'));
 
-    socket.on('revolution_triggered', (data) => {
-        showCutscene('revolution-cutscene');
-    });
+    socket.on('select_cards_to_give', (data) => showCardSelectionScreen(data));
+    socket.on('card_exchange', (data) => showCardExchange(data));
 
-    socket.on('joker_countered', (data) => {
-        showCutscene('counter-cutscene');
-    });
-
-    // Listen for card selection request (Tycoon/Rich choose cards)
-    socket.on('select_cards_to_give', (data) => {
-        showCardSelectionScreen(data);
-    });
-
-    // Listen for card exchange event (show the swap)
-    socket.on('card_exchange', (data) => {
-        showCardExchange(data);
-    });
-
-    // Listen for tycoon demotion event
     socket.on('tycoon_demoted', (data) => {
         document.getElementById('demoted-name').textContent = data.tycoonName;
         showCutscene('demotion-cutscene');
     });
-}
 
-// ============== Screen Navigation ==============
-function showScreen(screenId) {
-    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-    document.getElementById(screenId).classList.add('active');
-}
+    socket.on('rejoined_game', (data) => {
+        gameState.roomCode = data.code;
+        gameState.room = data.room;
+        saveSession();
+        showToast('Reconnected to game!');
 
-function goHome() {
-    gameState.roomCode = null;
-    gameState.room = null;
-    gameState.selectedCards = [];
-    showScreen('home-screen');
+        if (data.room.gamePhase === 'round_end') {
+            showScreen('round-end-screen');
+            showRoundEnd();
+        } else if (data.room.gamePhase === 'game_end') {
+            showScreen('game-end-screen');
+            showGameEnd();
+        } else {
+            showScreen('game-screen');
+            updateGameBoard();
+        }
+    });
+
+    socket.on('player_disconnected', (data) => showToast(`${data.playerName} disconnected`));
+    socket.on('player_reconnected', (data) => showToast(`${data.playerName} reconnected`));
+
+    socket.on('player_replaced', (data) => {
+        showToast(`${data.playerName} was replaced by bot`);
+        if (gameState.room) updateGameBoard();
+    });
 }
 
 // ============== Home Screen Actions ==============
 function playOffline() {
     gameState.playerName = document.getElementById('player-name').value || 'Player';
     createRoom();
-    // Auto-start after creating
     setTimeout(() => {
-        if (gameState.roomCode) {
-            startGame();
-        }
+        if (gameState.roomCode) startGame();
     }, 500);
 }
 
@@ -185,15 +151,6 @@ function showJoinModal() {
     setTimeout(() => document.getElementById('join-code-input').focus(), 100);
 }
 
-function openModal(content) {
-    document.getElementById('modal-content').innerHTML = content;
-    document.getElementById('modal-overlay').classList.add('active');
-}
-
-function closeModal() {
-    document.getElementById('modal-overlay').classList.remove('active');
-}
-
 function showRules() {
     document.getElementById('rules-modal').classList.add('active');
 }
@@ -208,7 +165,8 @@ function createRoom() {
     socket.emit('create_room', {
         playerName: gameState.playerName,
         playerId: gameState.playerId,
-        difficulty: gameState.difficulty
+        difficulty: gameState.difficulty,
+        gameType: 'tycoon',
     });
 }
 
@@ -223,14 +181,28 @@ function joinRoom() {
     socket.emit('join_room', {
         code: code,
         playerName: gameState.playerName,
-        playerId: gameState.playerId
+        playerId: gameState.playerId,
+        gameType: 'tycoon',
     });
     closeModal();
 }
 
 function leaveRoom() {
-    // TODO: Emit leave event
+    if (gameState.roomCode) {
+        socket.emit('leave_game', {
+            code: gameState.roomCode,
+            playerId: gameState.playerId,
+        });
+    }
     goHome();
+}
+
+function goHome() {
+    clearSession();
+    gameState.roomCode = null;
+    gameState.room = null;
+    gameState.selectedCards = [];
+    showScreen('home-screen');
 }
 
 function copyRoomCode() {
@@ -242,18 +214,16 @@ function copyRoomCode() {
 function startGame() {
     socket.emit('start_game', {
         code: gameState.roomCode,
-        playerId: gameState.playerId
+        playerId: gameState.playerId,
     });
 }
 
 function updateWaitingRoom() {
     document.getElementById('room-code-display').textContent = gameState.roomCode;
 
-    // Show/hide start button for host
     const startBtn = document.getElementById('start-game-btn');
     startBtn.style.display = gameState.isHost ? 'block' : 'none';
 
-    // Update player slots
     const container = document.getElementById('waiting-players');
     container.innerHTML = '';
 
@@ -282,36 +252,22 @@ function updateGameBoard() {
     if (!gameState.room) return;
 
     const room = gameState.room;
-
-    // Update round number
     document.getElementById('round-number').textContent = room.currentRound;
 
-    // Update revolution banner
     const revBanner = document.getElementById('revolution-banner');
     revBanner.style.display = room.isRevolution ? 'block' : 'none';
 
-    // Find current player (me)
     const myPlayer = room.players.find(p => p.id === gameState.playerId);
     const mySeatIndex = myPlayer ? room.players.indexOf(myPlayer) : 0;
 
-    // Update opponents
     updateOpponents(room, mySeatIndex);
-
-    // Update center pile
     updatePile(room.currentPile);
-
-    // Update turn indicator
     updateTurnIndicator(room);
-
-    // Update my hand
     updateHand(myPlayer);
-
-    // Update action buttons
     updateActionButtons(room);
 }
 
 function updateOpponents(room, mySeatIndex) {
-    const positions = ['left', 'top', 'right'];
     const players = room.players;
 
     for (let i = 0; i < 3; i++) {
@@ -322,10 +278,8 @@ function updateOpponents(room, mySeatIndex) {
         if (opponent) {
             elem.querySelector('.opponent-name').textContent = opponent.name;
             elem.querySelector('.opponent-cards').textContent = opponent.hasFinished
-                ? 'Finished!'
-                : `${opponent.handCount} cards`;
+                ? 'Finished!' : `${opponent.handCount} cards`;
 
-            // Show rank if any
             const rankElem = elem.querySelector('.opponent-rank');
             if (opponent.rank && opponent.rank !== 'none') {
                 rankElem.textContent = opponent.rank.charAt(0).toUpperCase() + opponent.rank.slice(1);
@@ -334,7 +288,6 @@ function updateOpponents(room, mySeatIndex) {
                 rankElem.textContent = '';
             }
 
-            // Highlight current player
             elem.classList.toggle('current-turn', opponentIndex === room.currentPlayerIndex);
             elem.classList.toggle('finished', opponent.hasFinished);
         }
@@ -344,24 +297,15 @@ function updateOpponents(room, mySeatIndex) {
 function updatePile(pile) {
     const container = document.getElementById('current-pile');
     container.innerHTML = '';
-
-    if (!pile || pile.length === 0) {
-        return;
-    }
-
-    pile.forEach(card => {
-        container.appendChild(createCardElement(card, false, false));
-    });
+    if (!pile || pile.length === 0) return;
+    pile.forEach(card => container.appendChild(createCardElement(card, false, false)));
 }
 
 function updateTurnIndicator(room) {
     const indicator = document.getElementById('turn-indicator');
     const currentPlayer = room.players[room.currentPlayerIndex];
 
-    if (!currentPlayer) {
-        indicator.textContent = '';
-        return;
-    }
+    if (!currentPlayer) { indicator.textContent = ''; return; }
 
     if (currentPlayer.id === gameState.playerId) {
         indicator.textContent = 'Your turn!';
@@ -376,7 +320,6 @@ function updateHand(player) {
     const container = document.getElementById('player-hand');
     container.innerHTML = '';
     gameState.selectedCards = [];
-
     if (!player || !player.hand) return;
 
     player.hand.forEach(card => {
@@ -418,20 +361,16 @@ function toggleCardSelection(card, elem) {
     const index = gameState.selectedCards.findIndex(c => c.id === card.id);
 
     if (index >= 0) {
-        // Deselect
         gameState.selectedCards.splice(index, 1);
         elem.classList.remove('selected');
     } else {
-        // Select - check if same value or joker
         if (gameState.selectedCards.length > 0) {
             const selectedValue = getEffectiveValue(gameState.selectedCards);
             if (card.value !== 16 && selectedValue !== 16 && card.value !== selectedValue) {
-                // Different value, clear selection
                 document.querySelectorAll('.hand .card.selected').forEach(c => c.classList.remove('selected'));
                 gameState.selectedCards = [];
             }
         }
-
         gameState.selectedCards.push(card);
         elem.classList.add('selected');
     }
@@ -459,41 +398,50 @@ function updateActionButtons(room) {
 // ============== Game Actions ==============
 function playCards() {
     if (gameState.selectedCards.length === 0) return;
-
-    const cardIds = gameState.selectedCards.map(c => c.id);
-
     socket.emit('play_cards', {
         code: gameState.roomCode,
         playerId: gameState.playerId,
-        cardIds: cardIds
+        cardIds: gameState.selectedCards.map(c => c.id),
     });
-
     gameState.selectedCards = [];
 }
 
 function passTurn() {
     socket.emit('pass_turn', {
         code: gameState.roomCode,
-        playerId: gameState.playerId
+        playerId: gameState.playerId,
     });
 }
 
 function leaveGame() {
-    // Show custom leave confirmation modal (works better on mobile)
-    const content = `
+    const isHost = gameState.isHost;
+    const message = isHost
+        ? 'As the host, leaving will end the game for everyone. Are you sure?'
+        : 'Are you sure you want to leave? You will be replaced by a bot.';
+
+    openModal(`
         <h2>Leave Game?</h2>
-        <p>Are you sure you want to leave the current game?</p>
+        <p>${message}</p>
         <div class="modal-buttons">
             <button class="btn-secondary" onclick="closeModal()">Cancel</button>
             <button class="btn-primary" onclick="confirmLeaveGame()">Leave</button>
         </div>
-    `;
-    openModal(content);
+    `);
 }
 
 function confirmLeaveGame() {
     closeModal();
-    goHome();
+    if (gameState.roomCode) {
+        socket.emit('leave_game', {
+            code: gameState.roomCode,
+            playerId: gameState.playerId,
+        });
+    }
+    clearSession();
+    gameState.roomCode = null;
+    gameState.room = null;
+    gameState.selectedCards = [];
+    showScreen('home-screen');
 }
 
 // ============== Round/Game End ==============
@@ -513,19 +461,15 @@ function renderRankings(containerId, showTotal = false) {
     container.innerHTML = '';
 
     const players = [...gameState.room.players].sort((a, b) => {
-        if (showTotal) {
-            return b.points - a.points;
-        }
+        if (showTotal) return b.points - a.points;
         return (a.finishOrder || 999) - (b.finishOrder || 999);
     });
 
     players.forEach(player => {
         const item = document.createElement('div');
         item.className = `rank-item ${player.rank || ''}`;
-
         const rankLabel = player.rank
-            ? player.rank.charAt(0).toUpperCase() + player.rank.slice(1)
-            : '';
+            ? player.rank.charAt(0).toUpperCase() + player.rank.slice(1) : '';
 
         item.innerHTML = `
             <div>
@@ -534,29 +478,19 @@ function renderRankings(containerId, showTotal = false) {
             </div>
             <div class="points">${player.points} pts</div>
         `;
-
         container.appendChild(item);
     });
 }
 
 function continueGame() {
-    socket.emit('next_round', {
-        code: gameState.roomCode
-    });
+    socket.emit('next_round', { code: gameState.roomCode });
     showScreen('game-screen');
 }
 
-function playAgain() {
-    // Reset and start new game
-    goHome();
-}
+function playAgain() { goHome(); }
 
-// ============== Card Selection (for Tycoon/Rich) ==============
-let cardSelectionState = {
-    requiredCount: 0,
-    selectedCards: [],
-    hand: []
-};
+// ============== Card Selection (Tycoon/Rich) ==============
+let cardSelectionState = { requiredCount: 0, selectedCards: [], hand: [] };
 
 function showCardSelectionScreen(data) {
     cardSelectionState.requiredCount = data.requiredCount;
@@ -569,14 +503,12 @@ function showCardSelectionScreen(data) {
     const selectedContainer = document.getElementById('card-select-selected');
     const confirmBtn = document.getElementById('card-select-confirm');
 
-    // Set info text based on rank
     if (data.rank === 'tycoon') {
         info.textContent = `You are TYCOON - Select ${data.requiredCount} cards to give to Beggar`;
     } else {
         info.textContent = `You are RICH - Select ${data.requiredCount} card to give to Poor`;
     }
 
-    // Render hand
     handContainer.innerHTML = '';
     data.hand.forEach(card => {
         const elem = createCardElement(card, true, false);
@@ -584,10 +516,8 @@ function showCardSelectionScreen(data) {
         handContainer.appendChild(elem);
     });
 
-    // Clear selected area
     selectedContainer.innerHTML = '';
     confirmBtn.disabled = true;
-
     screen.classList.add('active');
 }
 
@@ -595,38 +525,31 @@ function toggleCardForGiving(card, elem) {
     const index = cardSelectionState.selectedCards.findIndex(c => c.id === card.id);
 
     if (index >= 0) {
-        // Deselect
         cardSelectionState.selectedCards.splice(index, 1);
         elem.classList.remove('selected-to-give');
     } else {
-        // Select if not at max
         if (cardSelectionState.selectedCards.length < cardSelectionState.requiredCount) {
             cardSelectionState.selectedCards.push(card);
             elem.classList.add('selected-to-give');
         }
     }
 
-    // Update selected display
     const selectedContainer = document.getElementById('card-select-selected');
     selectedContainer.innerHTML = '';
     cardSelectionState.selectedCards.forEach(c => {
         selectedContainer.appendChild(createCardElement(c, false, false));
     });
 
-    // Enable/disable confirm button
-    const confirmBtn = document.getElementById('card-select-confirm');
-    confirmBtn.disabled = cardSelectionState.selectedCards.length !== cardSelectionState.requiredCount;
+    document.getElementById('card-select-confirm').disabled =
+        cardSelectionState.selectedCards.length !== cardSelectionState.requiredCount;
 }
 
 function confirmCardSelection() {
-    const cardIds = cardSelectionState.selectedCards.map(c => c.id);
-
     socket.emit('submit_card_selection', {
         code: gameState.roomCode,
         playerId: gameState.playerId,
-        cardIds: cardIds
+        cardIds: cardSelectionState.selectedCards.map(c => c.id),
     });
-
     document.getElementById('card-select-screen').classList.remove('active');
 }
 
@@ -634,50 +557,26 @@ function confirmCardSelection() {
 function createCardBack() {
     const elem = document.createElement('div');
     elem.className = 'card card-back';
-    elem.innerHTML = `
-        <div class="card-back-design"></div>
-    `;
+    elem.innerHTML = '<div class="card-back-design"></div>';
     return elem;
 }
 
 function showCardExchange(data) {
     const screen = document.getElementById('exchange-screen');
 
-    // Render card backs for beggar's cards (giving to tycoon)
-    const beggarGives = document.getElementById('beggar-gives');
-    beggarGives.innerHTML = '';
-    if (data.beggarGives) {
-        for (let i = 0; i < data.beggarGives.length; i++) {
-            beggarGives.appendChild(createCardBack());
+    ['beggar-gives', 'tycoon-gives', 'poor-gives', 'rich-gives'].forEach(id => {
+        const el = document.getElementById(id);
+        el.innerHTML = '';
+        const dataKey = {
+            'beggar-gives': 'beggarGives', 'tycoon-gives': 'tycoonGives',
+            'poor-gives': 'poorGives', 'rich-gives': 'richGives',
+        }[id];
+        if (data[dataKey]) {
+            for (let i = 0; i < data[dataKey].length; i++) {
+                el.appendChild(createCardBack());
+            }
         }
-    }
-
-    // Render card backs for tycoon's cards (giving to beggar)
-    const tycoonGives = document.getElementById('tycoon-gives');
-    tycoonGives.innerHTML = '';
-    if (data.tycoonGives) {
-        for (let i = 0; i < data.tycoonGives.length; i++) {
-            tycoonGives.appendChild(createCardBack());
-        }
-    }
-
-    // Render card backs for poor's cards (giving to rich)
-    const poorGives = document.getElementById('poor-gives');
-    poorGives.innerHTML = '';
-    if (data.poorGives) {
-        for (let i = 0; i < data.poorGives.length; i++) {
-            poorGives.appendChild(createCardBack());
-        }
-    }
-
-    // Render card backs for rich's cards (giving to poor)
-    const richGives = document.getElementById('rich-gives');
-    richGives.innerHTML = '';
-    if (data.richGives) {
-        for (let i = 0; i < data.richGives.length; i++) {
-            richGives.appendChild(createCardBack());
-        }
-    }
+    });
 
     screen.classList.add('active');
 }
@@ -693,27 +592,9 @@ function showCutscene(cutsceneId) {
     if (!cutscene) return;
 
     cutscene.style.display = 'flex';
-
-    // Remove and re-add to restart animation
     cutscene.style.animation = 'none';
-    cutscene.offsetHeight; // Trigger reflow
+    cutscene.offsetHeight;
     cutscene.style.animation = 'cutsceneFade 1.5s ease-out forwards';
 
-    // Hide after animation completes
-    setTimeout(() => {
-        cutscene.style.display = 'none';
-    }, 1500);
-}
-
-// ============== Utilities ==============
-function showToast(message, duration = 3000) {
-    const existing = document.querySelector('.toast');
-    if (existing) existing.remove();
-
-    const toast = document.createElement('div');
-    toast.className = 'toast';
-    toast.textContent = message;
-    document.body.appendChild(toast);
-
-    setTimeout(() => toast.remove(), duration);
+    setTimeout(() => { cutscene.style.display = 'none'; }, 1500);
 }

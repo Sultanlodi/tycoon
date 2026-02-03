@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Game Hub</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+</head>
+<body>
+    <div id="app">
+        <div id="game-picker-screen" class="screen active">
+            <div class="container picker-container">
+                <h1 class="picker-logo">GAME HUB</h1>
+                <p class="subtitle">Choose Your Game</p>
+
+                <div class="form-group">
+                    <label>Your Name</label>
+                    <input type="text" id="player-name" placeholder="Enter your name" maxlength="15" value="Player">
+                </div>
+
+                <div class="picker-grid" id="game-picker-grid"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Restore player name
+        const saved = localStorage.getItem('player_name');
+        if (saved) document.getElementById('player-name').value = saved;
+
+        document.getElementById('player-name').addEventListener('input', (e) => {
+            localStorage.setItem('player_name', e.target.value || 'Player');
+        });
+
+        // Render game picker from registry
+        const registry = {{ game_registry_json | safe }};
+        const grid = document.getElementById('game-picker-grid');
+
+        registry.forEach(game => {
+            const card = document.createElement('a');
+            card.className = 'picker-card';
+            card.href = game.entry_route || ('/' + game.id);
+            card.style.borderColor = game.color;
+            card.style.textDecoration = 'none';
+            card.innerHTML =
+                '<div class="picker-card-icon" style="color: ' + game.color + '">[' + game.icon + ']</div>' +
+                '<div class="picker-card-title" style="color: ' + game.color + '">' + game.display_name + '</div>' +
+                '<div class="picker-card-subtitle">' + game.subtitle + '</div>' +
+                '<div class="picker-card-desc">' + game.description + '</div>';
+            card.addEventListener('click', () => {
+                localStorage.setItem('player_name', document.getElementById('player-name').value || 'Player');
+            });
+            grid.appendChild(card);
+        });
+    </script>
+</body>
+</html>

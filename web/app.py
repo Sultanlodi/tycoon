@@ -9,9 +9,21 @@ from flask_cors import CORS
 import random
 import string
 import time
+import json
+import os
 from typing import Dict, List, Optional
 from dataclasses import dataclass, field, asdict
 from enum import Enum
+from dotenv import load_dotenv
+
+from game_registry import GAMES, get_game, get_max_players, list_games
+from poker import poker_events
+
+# Load .env from project root (one level up from web/)
+load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env'))
+
+SUPABASE_URL = os.getenv('EXPO_PUBLIC_SUPABASE_URL', '')
+SUPABASE_KEY = os.getenv('EXPO_PUBLIC_SUPABASE_ANON_KEY', '')
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'tycoon-secret-key-change-in-production'
@@ -97,6 +109,15 @@ class GameRoom:
 
 # In-memory storage for rooms
 rooms: Dict[str, GameRoom] = {}
+
+# Track socket ID to (room_code, player_id) for disconnect handling
+socket_to_player: Dict[str, tuple] = {}  # sid -> (room_code, player_id)
+
+# Track disconnected players for reconnection (room_code -> {player_id -> disconnect_time})
+disconnected_players: Dict[str, Dict[str, float]] = {}
+
+# Timeout before replacing disconnected player with bot (seconds)
+DISCONNECT_TIMEOUT = 60
 
 # ============== Deck Functions ==============
 
@@ -383,9 +404,12 @@ def bot_choose_response(value_groups: dict, pile_count: int, pile_value: int, is
 # ============== Room Management ==============
 
 def generate_room_code() -> str:
-    """Generate a random 6-character room code"""
+    """Generate a random 6-character room code (unique across all game types)"""
     chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-    return ''.join(random.choice(chars) for _ in range(6))
+    while True:
+        code = ''.join(random.choice(chars) for _ in range(6))
+        if code not in rooms and code not in poker_events.poker_rooms:
+            return code
 
 def card_to_dict(card: Card) -> dict:
     """Convert card to dictionary"""
@@ -485,20 +509,133 @@ def handle_connect():
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    print(f"Client disconnected: {request.sid}")
-    # TODO: Handle player leaving room
+    sid = request.sid
+    print(f"Client disconnected: {sid}")
+
+    # Find the player associated with this socket
+    if sid not in socket_to_player:
+        return
+
+    room_code, player_id = socket_to_player[sid]
+    del socket_to_player[sid]
+
+    # Dispatch to poker if it's a poker room
+    if room_code in poker_events.poker_rooms:
+        poker_events.handle_disconnect(room_code, player_id)
+        return
+
+    if room_code not in rooms:
+        return
+
+    room = rooms[room_code]
+
+    if player_id not in room.players:
+        return
+
+    player = room.players[player_id]
+
+    # If game hasn't started, just remove the player
+    if room.game_phase == 'waiting':
+        del room.players[player_id]
+        socketio.emit('player_left', {'playerId': player_id}, room=room_code)
+        return
+
+    # Game is in progress - mark player as disconnected
+    player.sid = None
+
+    # Track disconnection time for timeout
+    if room_code not in disconnected_players:
+        disconnected_players[room_code] = {}
+    disconnected_players[room_code][player_id] = time.time()
+
+    # Notify other players
+    socketio.emit('player_disconnected', {
+        'playerId': player_id,
+        'playerName': player.name
+    }, room=room_code)
+
+    # Start a background task to check for timeout
+    socketio.start_background_task(check_disconnect_timeout, room_code, player_id)
+
+
+def check_disconnect_timeout(room_code: str, player_id: str):
+    """Background task to replace disconnected player with bot after timeout"""
+    # Wait for the timeout period
+    socketio.sleep(DISCONNECT_TIMEOUT)
+
+    # Check if player is still disconnected
+    if room_code not in disconnected_players:
+        return
+    if player_id not in disconnected_players[room_code]:
+        return  # Player reconnected
+
+    # Player is still disconnected - replace with bot
+    if room_code not in rooms:
+        return
+
+    room = rooms[room_code]
+    if player_id not in room.players:
+        return
+
+    player = room.players[player_id]
+
+    # Skip if player already reconnected (has sid)
+    if player.sid is not None:
+        return
+
+    # Convert player to bot
+    print(f"Replacing disconnected player {player.name} with bot")
+    player.is_bot = True
+    player.name = f"{player.name} (Bot)"
+
+    # Remove from disconnected tracking
+    del disconnected_players[room_code][player_id]
+
+    # Notify remaining players
+    socketio.emit('player_replaced', {
+        'playerId': player_id,
+        'playerName': player.name
+    }, room=room_code)
+
+    # If it was this player's turn to select cards, auto-select for them
+    if room.game_phase == 'card_selection' and player_id not in room.pending_selections:
+        if player.rank == 'tycoon':
+            worst_cards = get_worst_cards(player.hand, 2)
+            room.pending_selections[player_id] = [c.id for c in worst_cards]
+        elif player.rank == 'rich':
+            worst_cards = get_worst_cards(player.hand, 1)
+            room.pending_selections[player_id] = [c.id for c in worst_cards]
+
+        # Check if exchange can now proceed
+        check_selections_complete(room)
+
+    # If it's this player's turn in the game, process bot turn
+    if room.game_phase == 'playing':
+        players_list = list(room.players.values())
+        players_list.sort(key=lambda p: p.seat_position)
+        current_player = players_list[room.current_player_index]
+
+        if current_player.id == player_id:
+            process_bot_turns(room)
+
 
 @socketio.on('create_room')
 def handle_create_room(data):
-    """Create a new game room"""
+    """Create a new game room (dispatches by gameType)"""
     player_name = data.get('playerName', 'Player')
     player_id = data.get('playerId', request.sid)
+    game_type = data.get('gameType', 'tycoon')
     difficulty = data.get('difficulty', 'medium')
 
     code = generate_room_code()
-    while code in rooms:
-        code = generate_room_code()
 
+    # Dispatch to game-specific handler
+    if game_type != 'tycoon' and game_type in GAMES:
+        if game_type == 'poker':
+            poker_events.create_room(code, player_id, player_name, request.sid)
+        return
+
+    # Tycoon room creation (existing behavior)
     room = GameRoom(
         code=code,
         host_id=player_id,
@@ -515,15 +652,24 @@ def handle_create_room(data):
     room.players[player_id] = player
     rooms[code] = room
 
+    # Track socket to player mapping
+    socket_to_player[request.sid] = (code, player_id)
+
     join_room(code)
     emit('room_created', {'code': code, 'room': room_to_dict(room, player_id)})
 
 @socketio.on('join_room')
 def handle_join_room(data):
-    """Join an existing room"""
+    """Join an existing room (auto-detects game type)"""
     code = data.get('code', '').upper()
     player_name = data.get('playerName', 'Player')
     player_id = data.get('playerId', request.sid)
+
+    # Check poker rooms first
+    if code in poker_events.poker_rooms:
+        game_cfg = get_game('poker')
+        poker_events.join_room_handler(code, player_id, player_name, request.sid, game_cfg['max_players'])
+        return
 
     if code not in rooms:
         emit('error', {'message': 'Room not found'})
@@ -531,6 +677,54 @@ def handle_join_room(data):
 
     room = rooms[code]
 
+    # Check if this is a rejoin (player already exists in room)
+    if player_id in room.players:
+        player = room.players[player_id]
+
+        # If player is a bot now (was replaced), can't rejoin
+        if player.is_bot:
+            emit('error', {'message': 'You were replaced by a bot'})
+            return
+
+        # Reconnect the player
+        player.sid = request.sid
+        socket_to_player[request.sid] = (code, player_id)
+
+        # Remove from disconnected tracking
+        if code in disconnected_players and player_id in disconnected_players[code]:
+            del disconnected_players[code][player_id]
+
+        join_room(code)
+
+        # Notify others that player reconnected
+        socketio.emit('player_reconnected', {
+            'playerId': player_id,
+            'playerName': player.name
+        }, room=code, include_self=False)
+
+        # Send current game state to rejoining player
+        if room.game_phase == 'waiting':
+            emit('room_joined', {'code': code, 'room': room_to_dict(room, player_id)})
+        else:
+            emit('rejoined_game', {'code': code, 'room': room_to_dict(room, player_id)})
+
+            # If it's their turn and they're selecting cards, resend the selection request
+            if room.game_phase == 'card_selection' and player_id not in room.pending_selections:
+                if player.rank == 'tycoon':
+                    emit('select_cards_to_give', {
+                        'rank': 'tycoon',
+                        'requiredCount': 2,
+                        'hand': [card_to_dict(c) for c in player.hand]
+                    })
+                elif player.rank == 'rich':
+                    emit('select_cards_to_give', {
+                        'rank': 'rich',
+                        'requiredCount': 1,
+                        'hand': [card_to_dict(c) for c in player.hand]
+                    })
+        return
+
+    # New player joining
     if room.game_phase != 'waiting':
         emit('error', {'message': 'Game already started'})
         return
@@ -547,6 +741,9 @@ def handle_join_room(data):
         sid=request.sid
     )
     room.players[player_id] = player
+
+    # Track socket to player mapping
+    socket_to_player[request.sid] = (code, player_id)
 
     join_room(code)
     emit('room_joined', {'code': code, 'room': room_to_dict(room, player_id)})
@@ -661,6 +858,85 @@ def handle_next_round(data):
     room = rooms[code]
     start_next_round(room)
     # Note: broadcast_game_state and process_bot_turns are called by finalize_round_start
+
+
+@socketio.on('leave_game')
+def handle_leave_game(data):
+    """Handle player intentionally leaving the game"""
+    code = data.get('code')
+    player_id = data.get('playerId')
+
+    # Dispatch to poker if it's a poker room
+    if code in poker_events.poker_rooms:
+        poker_events.handle_leave(code, player_id)
+        return
+
+    if code not in rooms:
+        return
+
+    room = rooms[code]
+
+    if player_id not in room.players:
+        return
+
+    player = room.players[player_id]
+    sid = request.sid
+
+    # Remove socket tracking
+    if sid in socket_to_player:
+        del socket_to_player[sid]
+
+    # Remove from disconnected tracking if present
+    if code in disconnected_players and player_id in disconnected_players[code]:
+        del disconnected_players[code][player_id]
+
+    # Check if this is the host
+    if player_id == room.host_id:
+        # Host is leaving - end the entire session
+        socketio.emit('session_ended', {
+            'reason': 'Host has ended the session'
+        }, room=code)
+
+        # Clean up the room
+        del rooms[code]
+        if code in disconnected_players:
+            del disconnected_players[code]
+        return
+
+    # Non-host player leaving
+    if room.game_phase == 'waiting':
+        # Game hasn't started - just remove the player
+        del room.players[player_id]
+        socketio.emit('player_left', {'playerId': player_id}, room=code)
+    else:
+        # Game in progress - replace with bot immediately
+        player.is_bot = True
+        player.name = f"{player.name} (Bot)"
+        player.sid = None
+
+        socketio.emit('player_replaced', {
+            'playerId': player_id,
+            'playerName': player.name
+        }, room=code)
+
+        # If it was this player's turn to select cards, auto-select
+        if room.game_phase == 'card_selection' and player_id not in room.pending_selections:
+            if player.rank == 'tycoon':
+                worst_cards = get_worst_cards(player.hand, 2)
+                room.pending_selections[player_id] = [c.id for c in worst_cards]
+            elif player.rank == 'rich':
+                worst_cards = get_worst_cards(player.hand, 1)
+                room.pending_selections[player_id] = [c.id for c in worst_cards]
+            check_selections_complete(room)
+
+        # If it's this player's turn, process bot turn
+        if room.game_phase == 'playing':
+            players_list = list(room.players.values())
+            players_list.sort(key=lambda p: p.seat_position)
+            current_player = players_list[room.current_player_index]
+
+            if current_player.id == player_id:
+                process_bot_turns(room)
 
 
 @socketio.on('submit_card_selection')
@@ -1087,11 +1363,29 @@ def broadcast_game_state(room: GameRoom):
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return render_template('picker.html', game_registry_json=json.dumps(list_games()))
+
+@app.route('/tycoon')
+def tycoon_page():
+    return render_template('tycoon.html')
+
+@app.route('/poker')
+def poker_page():
+    return render_template('poker.html',
+        supabase_url=SUPABASE_URL,
+        supabase_key=SUPABASE_KEY)
 
 @app.route('/health')
 def health():
     return jsonify({'status': 'ok'})
+
+@app.route('/api/games')
+def api_games():
+    return jsonify(list_games())
+
+# ============== Register Game Modules ==============
+
+poker_events.register(socketio, socket_to_player)
 
 # ============== Run Server ==============
 

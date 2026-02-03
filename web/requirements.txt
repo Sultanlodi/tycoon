@@ -4,3 +4,4 @@ flask-cors==4.0.0
 python-socketio==5.10.0
 simple-websocket==1.0.0
 gunicorn==21.2.0
+python-dotenv==1.0.0

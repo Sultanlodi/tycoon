@@ -3,38 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Game Hub</title>
+    <title>Tycoon</title>
     <link rel="stylesheet" href="/static/css/style.css">
     <link rel="icon" type="image/png" href="/static/favicon.png">
 </head>
 <body>
     <div id="app">
 
-        <!-- ==================== GAME PICKER ==================== -->
-        <div id="game-picker-screen" class="screen active">
-            <div class="container picker-container">
-                <h1 class="picker-logo">GAME HUB</h1>
-                <p class="subtitle">Choose Your Game</p>
+        <!-- Tycoon Home Screen -->
+        <div id="home-screen" class="screen active">
+            <div class="container">
+                <button class="change-game-btn" onclick="goToPicker()">Change Game</button>
+                <h1 class="logo">TYCOON</h1>
+                <p class="subtitle">Take Your Heart</p>
 
                 <div class="form-group">
                     <label>Your Name</label>
                     <input type="text" id="player-name" placeholder="Enter your name" maxlength="15" value="Player">
                 </div>
-
-                <div class="picker-grid" id="game-picker-grid">
-                    <!-- Rendered dynamically from registry -->
-                </div>
-            </div>
-        </div>
-
-        <!-- ==================== TYCOON SCREENS ==================== -->
-
-        <!-- Tycoon Home Screen -->
-        <div id="home-screen" class="screen">
-            <div class="container">
-                <button class="change-game-btn" onclick="goToPicker()">Change Game</button>
-                <h1 class="logo">TYCOON</h1>
-                <p class="subtitle">Take Your Heart</p>
 
                 <div class="form-group">
                     <label>Bot Difficulty</label>
@@ -204,7 +190,7 @@
                 <h2>Game Over!</h2>
                 <div class="final-rankings" id="final-rankings"></div>
                 <button class="btn-primary" onclick="playAgain()">Play Again</button>
-                <button class="btn-secondary" onclick="goHome()">Home</button>
+                <button class="btn-secondary" onclick="goToPicker()">Home</button>
             </div>
         </div>
 
@@ -222,94 +208,14 @@
             <div class="cutscene-content"><h1>DEMOTED!</h1><p>Tycoon falls to Beggar<span class="demotion-name" id="demoted-name"></span></p></div>
         </div>
 
-        <!-- ==================== POKER SCREENS ==================== -->
-
-        <!-- Poker Home -->
-        <div id="poker-home-screen" class="screen">
-            <div class="container">
-                <button class="change-game-btn" onclick="goToPicker()">Change Game</button>
-                <h1 class="logo poker-logo">POKER</h1>
-                <p class="subtitle">Texas Hold'em</p>
-
-                <div class="game-options">
-                    <button class="game-btn create-btn poker-create-btn" onclick="pokerCreateRoom()">
-                        <span class="btn-icon">[+]</span>
-                        <span class="btn-title">Create Room</span>
-                        <span class="btn-desc">Host a poker table (2-8 players)</span>
-                    </button>
-
-                    <button class="game-btn join-btn poker-join-btn" onclick="showPokerJoinModal()">
-                        <span class="btn-icon">[>]</span>
-                        <span class="btn-title">Join Room</span>
-                        <span class="btn-desc">Enter a room code</span>
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Poker Waiting Room / Lobby -->
-        <div id="poker-waiting-screen" class="screen">
-            <div class="container poker-lobby">
-                <button class="change-game-btn" onclick="pokerLeaveGame()">Leave</button>
-                <h2 class="poker-lobby-title">Poker Lobby</h2>
-
-                <div class="room-code-display poker-room-code">
-                    <span class="label">Room Code</span>
-                    <span id="poker-room-code" class="code">------</span>
-                    <button class="copy-btn" onclick="copyPokerRoomCode()">Copy</button>
-                </div>
-
-                <div class="players-list poker-players-list" id="poker-waiting-players"></div>
-
-                <div id="poker-hand-results" class="poker-hand-results" style="display:none;"></div>
-
-                <div id="poker-bankroll-info" class="poker-bankroll-info"></div>
-
-                <div class="waiting-buttons">
-                    <button class="btn-secondary" onclick="pokerLeaveGame()">Leave</button>
-                    <button class="btn-primary" id="poker-start-btn" style="display: none;">Start Game</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Poker Game Screen -->
-        <div id="poker-game-screen" class="screen">
-            <div class="poker-table-header">
-                <div class="poker-header-left">
-                    <span id="poker-phase" class="poker-phase-label"></span>
-                    <span id="poker-dealer-label" class="poker-dealer-label"></span>
-                </div>
-                <span id="poker-pot" class="poker-pot">Pot: $0</span>
-                <button class="leave-btn" onclick="pokerLeaveGame()">X</button>
-            </div>
-
-            <div class="poker-table">
-                <div class="poker-opponents" id="poker-opponents"></div>
-
-                <div class="poker-board">
-                    <div class="poker-community" id="poker-community-cards"></div>
-                </div>
-
-                <div class="poker-my-area">
-                    <div class="poker-my-info">
-                        <span id="poker-my-stack">Stack: $0</span>
-                        <span id="poker-my-bet"></span>
-                    </div>
-                    <div class="poker-my-hand" id="poker-my-hand"></div>
-                    <div class="poker-actions" id="poker-actions"></div>
-                </div>
-            </div>
-        </div>
-
-        <!-- ==================== SHARED MODALS ==================== -->
-
+        <!-- Shared Modal -->
         <div id="modal-overlay" class="modal-overlay" onclick="closeModal()">
             <div class="modal" onclick="event.stopPropagation()">
                 <div id="modal-content"></div>
             </div>
         </div>
 
-        <!-- Rules Modal (Tycoon) -->
+        <!-- Rules Modal -->
         <div id="rules-modal" class="modal-overlay" onclick="closeRulesModal()">
             <div class="modal rules-modal" onclick="event.stopPropagation()">
                 <h2>How to Play</h2>
@@ -340,10 +246,8 @@
         </div>
     </div>
 
-    <script>window.GAME_REGISTRY = {{ game_registry_json | safe }};</script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.0/socket.io.min.js"></script>
-    <script src="/static/js/bankroll.js"></script>
+    <script src="/static/js/shared.js"></script>
     <script src="/static/js/game.js"></script>
-    <script src="/static/js/poker.js"></script>
 </body>
 </html>
