@@ -14,6 +14,7 @@ gameState.difficulty = 'medium';
 document.addEventListener('DOMContentLoaded', () => {
     gameState.selectedGame = 'tycoon';
     initShared();
+    initAuth();
 
     // Setup difficulty buttons
     document.querySelectorAll('.diff-btn').forEach(btn => {

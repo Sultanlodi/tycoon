@@ -13,6 +13,7 @@
         <!-- Tycoon Home Screen -->
         <div id="home-screen" class="screen active">
             <div class="container">
+                <div id="auth-bar" class="auth-bar" style="display:none;"></div>
                 <button class="change-game-btn" onclick="goToPicker()">Change Game</button>
                 <h1 class="logo">TYCOON</h1>
                 <p class="subtitle">Take Your Heart</p>
@@ -247,6 +248,11 @@
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.0/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        window.__SUPABASE_URL = '{{ supabase_url }}';
+        window.__SUPABASE_KEY = '{{ supabase_key }}';
+    </script>
     <script src="/static/js/shared.js"></script>
     <script src="/static/js/game.js"></script>
 </body>

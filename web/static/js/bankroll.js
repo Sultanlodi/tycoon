@@ -10,7 +10,8 @@
  * - Persists to Supabase (user_wallets table) via anonymous auth
  * - localStorage used as write-through cache / offline fallback
  *
- * Auth: Uses Supabase signInAnonymously() to get a real auth.users UUID.
+ * Auth: Uses shared Supabase client from shared.js. If user is logged in,
+ * uses their session. Otherwise falls back to signInAnonymously() for guests.
  * This makes RLS policies (auth.uid() = user_id) work naturally.
  */
 
@@ -150,21 +151,14 @@ const BankrollService = (() => {
 
     /**
      * Initialize the service. Call once on page load.
-     * Creates a Supabase anonymous auth session (or restores existing one)
-     * so wallet operations work with RLS (auth.uid() = user_id).
+     * Uses the shared Supabase client (window._supabase) from shared.js.
+     * If a user is logged in, uses their session. Otherwise falls back
+     * to anonymous auth so wallet operations work with RLS (auth.uid() = user_id).
      */
     async function init() {
-        // Create Supabase client if config is available
-        if (window.__SUPABASE_URL && window.__SUPABASE_KEY && window.supabase) {
-            try {
-                _supabase = window.supabase.createClient(
-                    window.__SUPABASE_URL,
-                    window.__SUPABASE_KEY
-                );
-            } catch (e) {
-                console.warn('Supabase client creation failed:', e);
-            }
-        }
+        // Use shared Supabase client from shared.js (initSupabase)
+        initSupabase();
+        _supabase = window._supabase || null;
 
         // Authenticate to get a UUID for RLS
         const authed = await _authenticate();

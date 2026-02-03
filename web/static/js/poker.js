@@ -19,6 +19,7 @@ let pokerState = {
 document.addEventListener('DOMContentLoaded', async () => {
     gameState.selectedGame = 'poker';
     initShared();
+    initAuth();
 
     // Initialize wallet from Supabase
     await BankrollService.init();

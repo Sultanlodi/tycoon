@@ -1363,11 +1363,22 @@ def broadcast_game_state(room: GameRoom):
 
 @app.route('/')
 def index():
-    return render_template('picker.html', game_registry_json=json.dumps(list_games()))
+    return render_template('picker.html',
+        game_registry_json=json.dumps(list_games()),
+        supabase_url=SUPABASE_URL,
+        supabase_key=SUPABASE_KEY)
+
+@app.route('/auth')
+def auth_page():
+    return render_template('auth.html',
+        supabase_url=SUPABASE_URL,
+        supabase_key=SUPABASE_KEY)
 
 @app.route('/tycoon')
 def tycoon_page():
-    return render_template('tycoon.html')
+    return render_template('tycoon.html',
+        supabase_url=SUPABASE_URL,
+        supabase_key=SUPABASE_KEY)
 
 @app.route('/poker')
 def poker_page():

@@ -81,6 +81,67 @@ function closeModal() {
     document.getElementById('modal-overlay').classList.remove('active');
 }
 
+// ============== Supabase Client ==============
+
+function initSupabase() {
+    if (window._supabase) return; // already initialized
+    if (window.__SUPABASE_URL && window.__SUPABASE_KEY && window.supabase) {
+        window._supabase = window.supabase.createClient(
+            window.__SUPABASE_URL,
+            window.__SUPABASE_KEY
+        );
+    }
+}
+
+/**
+ * Check Supabase auth session and update UI.
+ * Call after initShared() on every page.
+ */
+async function initAuth() {
+    initSupabase();
+
+    const authBar = document.getElementById('auth-bar');
+    if (!authBar) return;
+
+    if (!window._supabase) {
+        authBar.style.display = 'none';
+        return;
+    }
+
+    const { data: { session } } = await window._supabase.auth.getSession();
+
+    if (session && session.user) {
+        const displayName = session.user.user_metadata?.display_name || 'Player';
+        gameState.playerName = displayName;
+        localStorage.setItem('player_name', displayName);
+
+        // Update name input
+        const nameInput = document.getElementById('player-name');
+        if (nameInput) {
+            nameInput.value = displayName;
+            nameInput.disabled = true;
+        }
+
+        authBar.innerHTML = `
+            <span class="auth-bar-user">Logged in as <strong>${displayName}</strong></span>
+            <button class="auth-bar-btn" onclick="handleLogout()">Log Out</button>
+        `;
+    } else {
+        authBar.innerHTML = `
+            <a href="/auth" class="auth-bar-btn">Log In / Sign Up</a>
+        `;
+    }
+    authBar.style.display = 'flex';
+}
+
+async function handleLogout() {
+    if (window._supabase) {
+        await window._supabase.auth.signOut();
+    }
+    localStorage.removeItem('player_name');
+    window.location.reload();
+}
+
 // ============== Shared Initialization ==============
 function initShared() {
     const savedSession = loadSession();

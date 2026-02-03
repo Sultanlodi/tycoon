@@ -11,6 +11,8 @@
     <div id="app">
         <div id="game-picker-screen" class="screen active">
             <div class="container picker-container">
+                <div id="auth-bar" class="auth-bar" style="display:none;"></div>
+
                 <h1 class="picker-logo">GAME HUB</h1>
                 <p class="subtitle">Choose Your Game</p>
 
@@ -24,11 +26,18 @@
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
-        // Restore player name
-        const saved = localStorage.getItem('player_name');
-        if (saved) document.getElementById('player-name').value = saved;
+        window.__SUPABASE_URL = '{{ supabase_url }}';
+        window.__SUPABASE_KEY = '{{ supabase_key }}';
+    </script>
+    <script src="/static/js/shared.js"></script>
+    <script>
+        // Init shared state + auth
+        initShared();
+        initAuth();
 
+        // Save name on picker card click
         document.getElementById('player-name').addEventListener('input', (e) => {
             localStorage.setItem('player_name', e.target.value || 'Player');
         });
