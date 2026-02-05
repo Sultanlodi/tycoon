@@ -208,6 +208,29 @@ function registerPokerEvents() {
         renderPokerTable();
     });
 
+    socket.on('player_kicked', (data) => {
+        if (pokerState.room) {
+            pokerState.room.players = pokerState.room.players.filter(p => p.id !== data.playerId);
+            showToast(data.playerName + ' was removed');
+            renderPokerWaiting();
+        }
+    });
+
+    socket.on('kicked_from_room', async (data) => {
+        _clearTimers();
+        if (data.stack > 0) {
+            await BankrollService.returnStack(data.stack);
+        }
+        _clearPendingReturn();
+        clearSession();
+        pokerState.room = null;
+        gameState.roomCode = null;
+        gameState.room = null;
+        showToast(data.reason || 'You were removed from the room');
+        showScreen('poker-home-screen');
+        updateBankrollDisplay();
+    });
+
     socket.on('player_disconnected', (data) => showToast(`${data.playerName} disconnected`));
     socket.on('player_reconnected', (data) => showToast(`${data.playerName} reconnected`));
 }
@@ -285,7 +308,7 @@ function showHowToPlayModal() {
 
                 <h3>Wallet &amp; Buy-In</h3>
                 <ul>
-                    <li>You get <strong>$3,000</strong> added to your wallet each week.</li>
+                    <li>Weekly minimum bankroll: <strong>$3,000</strong> (topped up if below).</li>
                     <li>Each buy-in costs <strong>$1,000</strong> from your wallet.</li>
                     <li>When you leave a room, your table chips return to your wallet.</li>
                 </ul>
@@ -525,14 +548,16 @@ function _showWinnerOverlay(room) {
     room.lastResults.winners.forEach(w => {
         const handName = w.handName ? `<div class="winner-hand-name">${w.handName}</div>` : '';
         html += `<div class="winner-entry">
-            <div class="winner-name">${w.name}</div>
-            <div class="winner-amount">+$${w.amount}</div>
+            <span class="winner-name">${w.name}</span>
+            <span class="winner-amount">+$${w.amount}</span>
             ${handName}
         </div>`;
     });
 
     content.innerHTML = html;
-    overlay.style.display = 'flex';
+    overlay.style.display = 'block';
+    // Force reflow then animate in
+    overlay.offsetHeight;
     overlay.classList.add('winner-animate');
 
     // Animate chips flying to winner(s)
@@ -546,10 +571,15 @@ function _showWinnerOverlay(room) {
         });
     }
 
+    // Fade out after 3s, then hide
     setTimeout(() => {
-        overlay.style.display = 'none';
         overlay.classList.remove('winner-animate');
-    }, 3500);
+        overlay.classList.add('winner-exit');
+        setTimeout(() => {
+            overlay.style.display = 'none';
+            overlay.classList.remove('winner-exit');
+        }, 400);
+    }, 3000);
 }
 
 // ============== Render: Waiting ==============
@@ -564,6 +594,8 @@ function renderPokerWaiting() {
     container.innerHTML = '';
     const maxSlots = 8;
 
+    const isHost = gameState.isHost || gameState.playerId === room.hostId;
+
     for (let i = 0; i < maxSlots; i++) {
         const slot = document.createElement('div');
         slot.className = 'player-slot';
@@ -571,8 +603,15 @@ function renderPokerWaiting() {
         if (room.players[i]) {
             const p = room.players[i];
             slot.classList.add('filled');
-            const botLabel = p.isBot ? ' [BOT]' : '';
-            slot.innerHTML = `<span>${p.name}${botLabel}</span><span class="player-stack">$${p.stack}</span>`;
+            const botLabel = p.isBot
+                ? (p.botDifficulty === 'hard' ? ' [HARD BOT]' : ' [BOT]')
+                : '';
+            let kickBtn = '';
+            if (isHost && p.id !== room.hostId) {
+                kickBtn = '<button class="kick-btn" onclick="pokerKickPlayer(\'' + p.id + '\', ' + p.isBot + ')" title="Remove">&times;</button>';
+            }
+            slot.innerHTML = '<span>' + p.name + botLabel + '</span>' +
+                '<span class="player-slot-right"><span class="player-stack">$' + p.stack + '</span>' + kickBtn + '</span>';
             if (p.id === room.hostId) slot.classList.add('host');
         } else {
             slot.classList.add('empty');
@@ -583,7 +622,6 @@ function renderPokerWaiting() {
 
     // Bot controls (host only)
     const botControls = document.getElementById('poker-bot-controls');
-    const isHost = gameState.isHost || gameState.playerId === room.hostId;
     if (isHost && room.players.length < maxSlots && (room.gamePhase === 'waiting' || room.gamePhase === 'hand_end')) {
         botControls.style.display = 'block';
     } else {
@@ -802,7 +840,11 @@ function _renderSeats(room, me) {
 
         const isShowdown = room.gamePhase === 'hand_end' && p.holeCards && p.holeCards.length;
         const shownCards = room.shownHands && room.shownHands[p.id];
-        const botLabel = p.isBot ? '<span class="bot-badge">BOT</span>' : '';
+        const botLabel = p.isBot
+            ? (p.botDifficulty === 'hard'
+                ? '<span class="bot-badge hard-badge">HARD</span>'
+                : '<span class="bot-badge">BOT</span>')
+            : '';
 
         let cardsHtml = '';
         if (isShowdown) {
@@ -819,7 +861,13 @@ function _renderSeats(room, me) {
             cardsHtml = '<span class="mini-card back"></span><span class="mini-card back"></span>';
         }
 
+        const isHost = gameState.playerId === room.hostId;
+        const kickHtml = isHost && p.id !== room.hostId
+            ? `<button class="seat-kick-btn" onclick="event.stopPropagation();pokerKickPlayer('${p.id}', ${p.isBot})" title="Remove">&times;</button>`
+            : '';
+
         seat.innerHTML = `
+            ${kickHtml}
             ${p.seat === room.dealerSeat ? '<span class="dealer-btn">D</span>' : ''}
             <div class="seat-name">${p.name}${botLabel}</div>
             <div class="seat-stack">$${p.stack}</div>
@@ -1053,11 +1101,12 @@ async function pokerBuyIn() {
     updateBankrollDisplay();
 }
 
-function pokerAddBot() {
+function pokerAddBot(difficulty) {
     if (!socket || !gameState.roomCode) return;
     socket.emit('poker_add_bot', {
         code: gameState.roomCode,
         playerId: gameState.playerId,
+        difficulty: difficulty || 'normal',
     });
 }
 
@@ -1105,6 +1154,38 @@ async function confirmPokerLeave() {
     updateBankrollDisplay();
 }
 
+// ============== Kick Player ==============
+
+function pokerKickPlayer(targetPlayerId, isBot) {
+    if (isBot) {
+        socket.emit('poker_kick_player', {
+            code: gameState.roomCode,
+            playerId: gameState.playerId,
+            targetPlayerId: targetPlayerId,
+        });
+    } else {
+        const target = pokerState.room && pokerState.room.players.find(p => p.id === targetPlayerId);
+        const name = target ? target.name : 'this player';
+        openModal(`
+            <h2>Remove Player?</h2>
+            <p>Remove <strong>${name}</strong> from the room? Their chips will be returned.</p>
+            <div class="modal-buttons">
+                <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+                <button class="btn-primary btn-danger" onclick="confirmPokerKick('${targetPlayerId}')">Remove</button>
+            </div>
+        `);
+    }
+}
+
+function confirmPokerKick(targetPlayerId) {
+    closeModal();
+    socket.emit('poker_kick_player', {
+        code: gameState.roomCode,
+        playerId: gameState.playerId,
+        targetPlayerId: targetPlayerId,
+    });
+}
+
 // ============== Bankroll Display ==============
 
 function updateBankrollDisplay() {
@@ -1114,7 +1195,7 @@ function updateBankrollDisplay() {
 
     el.innerHTML = `
         <div class="bankroll-wallet">Wallet: $${state.walletBalance}</div>
-        <div class="bankroll-reset">Next grant: ${BankrollService.formatDate(state.nextResetDate)}</div>
+        <div class="bankroll-reset">Weekly min: $${state.weeklyMinimum} (${BankrollService.formatDate(state.nextResetDate)})</div>
         <button class="btn-primary poker-buyin-btn" onclick="pokerBuyIn()" ${state.canBuyIn ? '' : 'disabled'}>
             Buy In: $${state.buyInAmount}
         </button>

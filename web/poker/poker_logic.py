@@ -88,6 +88,7 @@ class PokerPlayer:
     seat: int = 0
     sid: Optional[str] = None
     is_bot: bool = False
+    bot_difficulty: str = 'normal'  # 'normal' | 'hard'
 
 
 @dataclass
@@ -589,22 +590,28 @@ def player_to_dict(player: PokerPlayer, hide_cards: bool = False) -> dict:
         'isSittingOut': player.is_sitting_out,
         'seat': player.seat,
         'isBot': player.is_bot,
+        'botDifficulty': player.bot_difficulty,
     }
 
 
 # ============== Bot AI ==============
 
 POKER_BOT_NAMES = [
-    'Ace Bot', 'Bluff Bot', 'Call Bot', 'Deal Bot',
-    'Flop Bot', 'Grind Bot', 'Hit Bot', 'Jam Bot',
+    'Ehsan Bot', 'Justin Bot', 'Sultan Bot', 'Denise Bot',
+    'Amer Bot', 'Zak Bot', 'Josh Bot', 'Reese Bot',
+    'Horacio Bot', 'Gui Bot', 'Dylan Bot',
 ]
 
 
 def make_poker_bot_decision(player: PokerPlayer, room) -> Tuple[str, int]:
     """
-    Simple poker bot AI. Returns (action, amount).
+    Poker bot AI. Returns (action, amount).
+    Routes to hard bot strategy if bot_difficulty == 'hard'.
     Actions: fold, check, call, bet, raise
     """
+    if player.bot_difficulty == 'hard':
+        return _make_hard_bot_decision(player, room)
+
     call_amount = room.current_bet - player.current_bet
     can_check = call_amount <= 0
     stack = player.stack
@@ -713,6 +720,517 @@ def _evaluate_bot_strength(player: PokerPlayer, room) -> float:
     hand_rank = best_score[0]
     # Map hand rank (0-9) to strength
     return min(0.2 + hand_rank * 0.09, 1.0)
+
+
+# ============== Hard Bot AI (GTO-Inspired) ==============
+
+# Preflop hand categories
+_PREMIUM_HANDS = {
+    (14, 14), (13, 13), (12, 12),  # AA, KK, QQ
+}
+_PREMIUM_SUITED = {(14, 13)}  # AKs
+
+_STRONG_HANDS = {
+    (11, 11), (10, 10),  # JJ, TT
+}
+_STRONG_UNPAIRED = {(14, 13), (14, 12), (13, 12)}  # AK, AQ, KQ (suited handled separately)
+
+_GOOD_HANDS = {
+    (9, 9), (8, 8), (7, 7),  # 99-77
+}
+_GOOD_SUITED = {(14, 11), (14, 10), (13, 11), (12, 11)}  # AJs, ATs, KJs, QJs
+
+_PLAYABLE_PAIRS = {(6, 6), (5, 5), (4, 4), (3, 3), (2, 2)}  # 66-22
+
+
+def _get_preflop_category(v1: int, v2: int, suited: bool) -> str:
+    """Categorize a preflop hand. Returns: premium, strong, good, playable, marginal, trash."""
+    high, low = max(v1, v2), min(v1, v2)
+    pair = (high, low) if high == low else None
+
+    if pair:
+        if pair in _PREMIUM_HANDS:
+            return 'premium'
+        if pair in _STRONG_HANDS:
+            return 'strong'
+        if pair in _GOOD_HANDS:
+            return 'good'
+        if pair in _PLAYABLE_PAIRS:
+            return 'playable'
+        return 'marginal'
+
+    combo = (high, low)
+    if suited:
+        if combo in _PREMIUM_SUITED:
+            return 'premium'
+        if combo in _STRONG_UNPAIRED:
+            return 'strong'
+        if combo in _GOOD_SUITED:
+            return 'good'
+        # Suited connectors (gap <= 1)
+        if high - low <= 2 and low >= 5:
+            return 'playable'
+        # Suited aces
+        if high == 14 and low >= 2:
+            return 'playable'
+        if high >= 10 and low >= 8:
+            return 'marginal'
+        return 'trash'
+
+    # Unsuited
+    if combo in _STRONG_UNPAIRED:
+        return 'strong'
+    if high == 14 and low >= 10:
+        return 'good'
+    if high >= 12 and low >= 10:
+        return 'marginal'
+    return 'trash'
+
+
+def _get_position(player_id: str, hand_players: List[str]) -> str:
+    """Determine position category: early, middle, late, blinds."""
+    if not hand_players:
+        return 'late'
+    n = len(hand_players)
+    try:
+        idx = hand_players.index(player_id)
+    except ValueError:
+        return 'late'
+
+    if n <= 2:
+        return 'late'  # Heads-up
+
+    # In hand_players, index 0 and 1 are SB/BB (or UTG and SB if heads-up handled above)
+    if n == 3:
+        if idx == 0:
+            return 'blinds'  # SB
+        if idx == 1:
+            return 'blinds'  # BB
+        return 'late'  # Button
+
+    # 4+ players: SB=0, BB=1, then positions clockwise
+    if idx == 0:
+        return 'blinds'  # SB
+    if idx == 1:
+        return 'blinds'  # BB
+
+    # Remaining positions (2 to n-1)
+    remaining = n - 2
+    rel_pos = idx - 2  # 0-indexed from first non-blind
+
+    if remaining <= 2:
+        return 'late'
+    if rel_pos < remaining // 3:
+        return 'early'
+    if rel_pos < 2 * remaining // 3:
+        return 'middle'
+    return 'late'
+
+
+def _evaluate_board_texture(community_cards: List[PokerCard]) -> dict:
+    """Analyze board texture for strategic decisions."""
+    if not community_cards:
+        return {
+            'is_paired': False,
+            'is_monotone': False,
+            'is_two_tone': False,
+            'is_connected': False,
+            'high_card': 0,
+            'wetness': 0.0,
+        }
+
+    values = [c.value for c in community_cards]
+    suits = [c.suit for c in community_cards]
+    suit_counts = Counter(suits)
+    value_counts = Counter(values)
+
+    is_paired = any(c >= 2 for c in value_counts.values())
+    most_common_suit_count = suit_counts.most_common(1)[0][1] if suit_counts else 0
+    is_monotone = most_common_suit_count >= 3
+    is_two_tone = len(suit_counts) == 2 and most_common_suit_count >= 2
+
+    # Connected: 3+ cards within a 4-value span
+    sorted_vals = sorted(set(values))
+    is_connected = False
+    for i in range(len(sorted_vals)):
+        for j in range(i + 2, len(sorted_vals)):
+            if sorted_vals[j] - sorted_vals[i] <= 4:
+                is_connected = True
+                break
+        if is_connected:
+            break
+
+    high_card = max(values) if values else 0
+
+    # Wetness score (0.0 = dry, 1.0 = very wet)
+    wetness = 0.0
+    if is_monotone:
+        wetness += 0.4
+    elif is_two_tone:
+        wetness += 0.2
+    if is_connected:
+        wetness += 0.3
+    if not is_paired:
+        wetness += 0.1
+    if high_card <= 10:
+        wetness += 0.1  # Low boards can be more connected
+
+    return {
+        'is_paired': is_paired,
+        'is_monotone': is_monotone,
+        'is_two_tone': is_two_tone,
+        'is_connected': is_connected,
+        'high_card': high_card,
+        'wetness': min(wetness, 1.0),
+    }
+
+
+def _count_flush_draw(hole_cards: List[PokerCard], community_cards: List[PokerCard]) -> int:
+    """Return max cards to a flush (4 = flush draw, 5 = flush)."""
+    all_cards = hole_cards + community_cards
+    suit_counts = Counter(c.suit for c in all_cards)
+    return max(suit_counts.values()) if suit_counts else 0
+
+
+def _has_straight_draw(hole_cards: List[PokerCard], community_cards: List[PokerCard]) -> Tuple[bool, bool]:
+    """Return (has_oesd, has_gutshot) for straight draw detection."""
+    all_cards = hole_cards + community_cards
+    values = set(c.value for c in all_cards)
+    # Add low ace for wheel draws
+    if 14 in values:
+        values.add(1)
+
+    # Check for 4-card sequences with gaps
+    sorted_vals = sorted(values)
+
+    has_oesd = False
+    has_gutshot = False
+
+    # Check all 5-card windows
+    for start in range(1, 11):  # 1 to 10 (for straights ending at 5 through A)
+        window = set(range(start, start + 5))
+        matches = len(window & values)
+        if matches == 4:
+            # Check if open-ended (both ends available)
+            missing = window - values
+            missing_val = list(missing)[0]
+            if missing_val == start or missing_val == start + 4:
+                has_oesd = True
+            else:
+                has_gutshot = True
+
+    return has_oesd, has_gutshot
+
+
+def _evaluate_hard_strength(player: PokerPlayer, room) -> float:
+    """
+    Enhanced hand strength for hard bots.
+    Includes draw potential detection.
+    """
+    cards = player.hole_cards
+    if len(cards) < 2:
+        return 0.3
+
+    v1, v2 = cards[0].value, cards[1].value
+    suited = cards[0].suit == cards[1].suit
+    high = max(v1, v2)
+
+    if not room.community_cards:
+        # Preflop strength based on hand category
+        category = _get_preflop_category(v1, v2, suited)
+        if category == 'premium':
+            return 0.92
+        if category == 'strong':
+            return 0.78
+        if category == 'good':
+            return 0.62
+        if category == 'playable':
+            return 0.45
+        if category == 'marginal':
+            return 0.30
+        return 0.15
+
+    # Postflop: base strength from hand rank
+    all_cards = cards + room.community_cards
+    best_score, _ = evaluate_best_hand(all_cards)
+    if not best_score:
+        return 0.15
+
+    hand_rank = best_score[0]
+    # Base mapping: 0=high card -> 9=royal flush
+    base_strength = 0.15 + hand_rank * 0.085
+
+    # Add draw bonuses
+    flush_count = _count_flush_draw(cards, room.community_cards)
+    if flush_count == 4:
+        base_strength += 0.15  # Flush draw
+    elif flush_count >= 5:
+        pass  # Already have flush, no bonus needed
+
+    has_oesd, has_gutshot = _has_straight_draw(cards, room.community_cards)
+    if has_oesd and hand_rank < 4:  # Don't add if already have straight
+        base_strength += 0.12
+    elif has_gutshot and hand_rank < 4:
+        base_strength += 0.06
+
+    # Overpair/top pair bonus
+    if hand_rank == 1:  # One pair
+        board_values = [c.value for c in room.community_cards]
+        pair_value = best_score[1]  # The pair value
+        if pair_value > max(board_values):
+            base_strength += 0.08  # Overpair
+        elif pair_value == max(board_values):
+            base_strength += 0.04  # Top pair
+
+    return min(base_strength, 1.0)
+
+
+def _pick_bet_size(room, strength: float, texture: dict, is_bluff: bool = False) -> int:
+    """Pick appropriate bet size based on situation."""
+    pot = room.pot
+    if pot <= 0:
+        pot = room.big_blind * 2
+
+    if is_bluff:
+        # Small bluffs to save chips
+        size = int(pot * random.uniform(0.25, 0.35))
+    elif strength >= 0.7:
+        # Value betting
+        if texture['wetness'] >= 0.5:
+            # Wet board: bet bigger for protection
+            size = int(pot * random.uniform(0.6, 0.75))
+        else:
+            # Dry board: smaller bets
+            size = int(pot * random.uniform(0.33, 0.5))
+    else:
+        # Medium hands: smaller sizing
+        size = int(pot * random.uniform(0.33, 0.45))
+
+    # Ensure minimum bet
+    return max(size, room.big_blind)
+
+
+def _make_hard_bot_decision(player: PokerPlayer, room) -> Tuple[str, int]:
+    """
+    GTO-inspired poker bot decision making.
+    Uses position, pot odds, board texture, and varied bet sizing.
+    """
+    call_amount = room.current_bet - player.current_bet
+    can_check = call_amount <= 0
+    stack = player.stack
+    pot = room.pot
+
+    if stack <= 0:
+        return ('check', 0) if can_check else ('fold', 0)
+
+    # Deterministic RNG per hand for consistency
+    rng = random.Random(hash((room.hand_number, player.id, room.game_phase)))
+
+    # Position and strength
+    position = _get_position(player.id, room.hand_players)
+    strength = _evaluate_hard_strength(player, room)
+    texture = _evaluate_board_texture(room.community_cards)
+
+    # Pot odds calculation
+    pot_odds = call_amount / (pot + call_amount) if call_amount > 0 else 0
+
+    # Count opponents
+    num_opponents = len([
+        pid for pid in room.hand_players
+        if pid in room.players
+        and not room.players[pid].is_folded
+        and pid != player.id
+    ])
+
+    # ========== PREFLOP ==========
+    if room.game_phase == 'pre_flop':
+        category = _get_preflop_category(
+            player.hole_cards[0].value,
+            player.hole_cards[1].value,
+            player.hole_cards[0].suit == player.hole_cards[1].suit
+        )
+
+        # Opening raise size
+        def _open_raise():
+            raise_to = room.big_blind * 3
+            # Add 1 BB per limper
+            limpers = len([
+                pid for pid in room.hand_players
+                if pid in room.players
+                and room.players[pid].current_bet == room.big_blind
+                and not room.players[pid].is_folded
+                and pid != player.id
+            ])
+            raise_to += limpers * room.big_blind
+            return min(raise_to, player.current_bet + stack)
+
+        # Facing a raise (someone raised above BB)
+        facing_raise = room.current_bet > room.big_blind
+
+        if facing_raise:
+            raise_size = room.current_bet - room.big_blind
+
+            if category == 'premium':
+                # 3-bet
+                reraise_to = room.current_bet * 3
+                reraise_to = min(reraise_to, player.current_bet + stack)
+                return ('raise', reraise_to)
+
+            if category == 'strong':
+                # Call or 3-bet (50/50)
+                if rng.random() < 0.5 and call_amount <= stack:
+                    return ('call', 0)
+                reraise_to = room.current_bet * 3
+                reraise_to = min(reraise_to, player.current_bet + stack)
+                return ('raise', reraise_to)
+
+            if category == 'good':
+                # Call small raises, fold large ones
+                if raise_size <= room.big_blind * 5 and call_amount <= stack:
+                    return ('call', 0)
+                return ('fold', 0)
+
+            if category == 'playable':
+                # Call only from late position with good odds
+                if position == 'late' and raise_size <= room.big_blind * 3:
+                    if call_amount <= stack:
+                        return ('call', 0)
+                return ('fold', 0)
+
+            # Marginal/trash: fold
+            return ('fold', 0)
+
+        # No raise yet (can open)
+        if category == 'premium':
+            return ('raise', _open_raise())
+
+        if category == 'strong':
+            return ('raise', _open_raise())
+
+        if category == 'good':
+            if position in ('middle', 'late', 'blinds'):
+                return ('raise', _open_raise())
+            # Early position: raise 60%, fold 40%
+            if rng.random() < 0.6:
+                return ('raise', _open_raise())
+            if can_check:
+                return ('check', 0)
+            return ('fold', 0)
+
+        if category == 'playable':
+            if position == 'late':
+                return ('raise', _open_raise())
+            if position == 'middle' and rng.random() < 0.4:
+                return ('raise', _open_raise())
+            if can_check:
+                return ('check', 0)
+            return ('fold', 0)
+
+        if category == 'marginal':
+            # Only open from button occasionally
+            if position == 'late' and rng.random() < 0.25:
+                return ('raise', _open_raise())
+            if can_check:
+                return ('check', 0)
+            return ('fold', 0)
+
+        # Trash
+        if can_check:
+            return ('check', 0)
+        return ('fold', 0)
+
+    # ========== POSTFLOP ==========
+    street = room.game_phase
+    flush_draw = _count_flush_draw(player.hole_cards, room.community_cards) == 4
+    has_oesd, has_gutshot = _has_straight_draw(player.hole_cards, room.community_cards)
+    has_draw = flush_draw or has_oesd
+
+    # Strong hand (>= 0.7)
+    if strength >= 0.7:
+        if can_check:
+            # Value bet
+            bet_size = _pick_bet_size(room, strength, texture)
+            bet_to = player.current_bet + min(bet_size, stack)
+            return ('bet', bet_to)
+        else:
+            # Facing a bet with strong hand
+            # Raise sometimes (40%)
+            if rng.random() < 0.4 and call_amount * 2 <= stack:
+                raise_to = room.current_bet + max(call_amount, room.big_blind * 2)
+                raise_to = min(raise_to, player.current_bet + stack)
+                return ('raise', raise_to)
+            if call_amount <= stack:
+                return ('call', 0)
+            return ('fold', 0)
+
+    # Medium hand (0.45 - 0.69)
+    if strength >= 0.45:
+        if can_check:
+            # Check most of the time, small bet occasionally for protection
+            if position == 'late' or rng.random() < 0.3:
+                # Occasionally bet for value/protection
+                bet_size = _pick_bet_size(room, strength, texture)
+                bet_to = player.current_bet + min(bet_size, stack)
+                return ('bet', bet_to)
+            return ('check', 0)
+        else:
+            # Facing a bet: use pot odds
+            implied_odds_threshold = strength * 0.8
+            if pot_odds <= implied_odds_threshold and call_amount <= stack:
+                return ('call', 0)
+            # Fold to large bets (> pot)
+            if call_amount > pot:
+                return ('fold', 0)
+            if call_amount <= stack:
+                return ('call', 0)
+            return ('fold', 0)
+
+    # Drawing hand (0.3 - 0.44 with draws)
+    if strength >= 0.3 and has_draw:
+        if can_check:
+            # Semi-bluff occasionally (25%)
+            if rng.random() < 0.25:
+                bet_size = _pick_bet_size(room, strength, texture, is_bluff=True)
+                bet_to = player.current_bet + min(bet_size, stack)
+                return ('bet', bet_to)
+            return ('check', 0)
+        else:
+            # Call if pot odds are right for draws
+            # Flush draw ~35% equity, OESD ~31%
+            draw_equity = 0.35 if flush_draw else (0.31 if has_oesd else 0.17)
+            if pot_odds <= draw_equity and call_amount <= stack:
+                return ('call', 0)
+            # Semi-bluff raise occasionally (15%)
+            if rng.random() < 0.15 and call_amount * 2 <= stack:
+                raise_to = room.current_bet + call_amount
+                raise_to = min(raise_to, player.current_bet + stack)
+                return ('raise', raise_to)
+            return ('fold', 0)
+
+    # Weak hand (< 0.3)
+    if can_check:
+        # Bluff occasionally based on street
+        bluff_freq = {
+            'flop': 0.12,
+            'turn': 0.08,
+            'river': 0.05,
+        }.get(street, 0.05)
+
+        # More likely to bluff heads-up in position
+        if num_opponents == 1 and position == 'late':
+            bluff_freq *= 1.5
+
+        if rng.random() < bluff_freq:
+            bet_size = _pick_bet_size(room, strength, texture, is_bluff=True)
+            bet_to = player.current_bet + min(bet_size, stack)
+            return ('bet', bet_to)
+        return ('check', 0)
+
+    # Facing a bet with weak hand
+    # Occasionally call tiny bets
+    if call_amount <= room.big_blind and call_amount <= stack and rng.random() < 0.3:
+        return ('call', 0)
+    return ('fold', 0)
 
 
 def room_to_dict(room: PokerRoom, for_player_id: Optional[str] = None) -> dict:

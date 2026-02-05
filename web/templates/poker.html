@@ -13,8 +13,10 @@
         <!-- Poker Home -->
         <div id="poker-home-screen" class="screen active">
             <div class="container">
-                <div id="auth-bar" class="auth-bar" style="display:none;"></div>
-                <button class="change-game-btn" onclick="goToPicker()">Change Game</button>
+                <div class="page-header">
+                    <button class="change-game-btn" onclick="goToPicker()">Change Game</button>
+                    <div id="auth-bar" class="auth-bar" style="display:none;"></div>
+                </div>
                 <h1 class="logo poker-logo">POKER</h1>
                 <p class="subtitle">Texas Hold'em</p>
 
@@ -60,7 +62,8 @@
                 <div class="players-list poker-players-list" id="poker-waiting-players"></div>
 
                 <div id="poker-bot-controls" style="display:none;">
-                    <button class="btn-secondary poker-add-bot-btn" onclick="pokerAddBot()">+ Add Bot</button>
+                    <button class="btn-secondary poker-add-bot-btn" onclick="pokerAddBot('normal')">+ Normal Bot</button>
+                    <button class="btn-secondary poker-add-bot-btn hard-bot-btn" onclick="pokerAddBot('hard')">+ Hard Bot</button>
                 </div>
 
                 <div id="poker-hand-results" class="poker-hand-results" style="display:none;"></div>

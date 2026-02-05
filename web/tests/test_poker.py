@@ -15,6 +15,7 @@ from poker.poker_logic import (
     room_to_dict, card_to_dict,
     BLIND_SCHEDULE, HANDS_PER_BLIND_LEVEL, TURN_TIME_LIMIT, POST_HAND_DELAY,
 )
+from poker.poker_events import _apply_kick
 
 
 # ============== Helpers ==============
@@ -669,3 +670,84 @@ class TestAutoDeal:
         room.auto_deal_pending = True
         start_hand(room)
         assert room.auto_deal_pending is False
+
+
+# ============== Kick Player Tests ==============
+
+class TestKickPlayer:
+    def _make_room(self, num_players=3, stack=1000):
+        room = PokerRoom(code='KICK', host_id='p0')
+        for i in range(num_players):
+            room.players[f'p{i}'] = PokerPlayer(
+                id=f'p{i}', name=f'Player {i}',
+                stack=stack, seat=i,
+            )
+        return room
+
+    def test_kick_in_lobby_removes_player(self):
+        room = self._make_room(3)
+        assert 'p1' in room.players
+        _apply_kick(room, 'p1')
+        del room.players['p1']
+        assert 'p1' not in room.players
+        assert len(room.players) == 2
+
+    def test_kick_mid_hand_folds_player(self):
+        room = self._make_room(3)
+        start_hand(room)
+        # Kick a non-current player
+        current_pid = room.hand_players[room.current_player_index]
+        target = [pid for pid in room.hand_players if pid != current_pid][0]
+        _apply_kick(room, target)
+        assert room.players[target].is_folded is True
+        assert target not in room.hand_players
+        # Hand should continue (2 active remain)
+        assert room.game_phase != 'hand_end'
+        del room.players[target]
+        assert len(room.players) == 2
+
+    def test_kick_current_player_advances_turn(self):
+        room = self._make_room(3)
+        start_hand(room)
+        current_pid = room.hand_players[room.current_player_index]
+        _apply_kick(room, current_pid)
+        # After kick, current_player_index should point to a valid player
+        assert current_pid not in room.hand_players
+        new_current = room.hand_players[room.current_player_index]
+        assert new_current in room.players
+        assert new_current != current_pid
+
+    def test_kick_leaves_one_resolves_hand(self):
+        room = self._make_room(2)
+        start_hand(room)
+        pot_before = room.pot
+        assert pot_before > 0
+        _apply_kick(room, 'p1')
+        assert room.game_phase == 'hand_end'
+        assert room.last_results is not None
+        # p0 should be the winner
+        winner_ids = [w['id'] for w in room.last_results['winners']]
+        assert 'p0' in winner_ids
+
+    def test_cannot_kick_host_validation(self):
+        """Host ID validation happens in the socket handler, but _apply_kick
+        should still work without crashing if called on the host."""
+        room = self._make_room(2)
+        start_hand(room)
+        # _apply_kick doesn't enforce host check — that's the handler's job.
+        # Just verify it doesn't crash.
+        _apply_kick(room, 'p0')
+        assert 'p0' not in room.hand_players
+
+    def test_kick_during_hand_end(self):
+        room = self._make_room(3)
+        start_hand(room)
+        # Force hand_end
+        room.game_phase = 'hand_end'
+        room.hand_players = ['p0', 'p1', 'p2']
+        _apply_kick(room, 'p2')
+        assert 'p2' not in room.hand_players
+        # No fold should have been applied (we're in hand_end)
+        assert room.players['p2'].is_folded is False
+        del room.players['p2']
+        assert len(room.players) == 2

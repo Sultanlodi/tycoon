@@ -91,6 +91,11 @@ function registerTycoonEvents() {
         showCutscene('demotion-cutscene');
     });
 
+    socket.on('forced_beggar', (data) => {
+        document.getElementById('forced-beggar-name').textContent = data.playerName;
+        showCutscene('forced-beggar-cutscene');
+    });
+
     socket.on('rejoined_game', (data) => {
         gameState.roomCode = data.code;
         gameState.room = data.room;

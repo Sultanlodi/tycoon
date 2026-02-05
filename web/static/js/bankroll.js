@@ -4,7 +4,7 @@
  * Single wallet model backed by Supabase.
  *
  * - ONE balance: walletBalance
- * - Weekly +3000 grant (additive, not a reset)
+ * - Weekly minimum balance check: floor to $3000 if below (not additive)
  * - Buy-in = $1000 from walletBalance
  * - Leave room → return stack to walletBalance
  * - Persists to Supabase (user_wallets table) via anonymous auth
@@ -17,7 +17,7 @@
 
 const BankrollService = (() => {
     const STORAGE_KEY = 'poker_bankroll';
-    const WEEKLY_GRANT = 3000;
+    const WEEKLY_MINIMUM = 3000;
     const BUY_IN_AMOUNT = 1000;
 
     let _supabase = null;
@@ -196,13 +196,17 @@ const BankrollService = (() => {
     }
 
     /**
-     * Check if weekly grant is due and apply it (+3000 additive).
+     * Check if weekly minimum balance is due and apply floor-to-3000 if needed.
+     * Only increases balance if below WEEKLY_MINIMUM; does nothing if at or above.
      */
     async function applyWeeklyGrant() {
         const currentWeek = getWeekKey();
         if (_lastGrantWeek === currentWeek) return false;
 
-        _walletBalance += WEEKLY_GRANT;
+        // Floor to minimum: only increase if below, never decrease
+        if (_walletBalance < WEEKLY_MINIMUM) {
+            _walletBalance = WEEKLY_MINIMUM;
+        }
         _lastGrantWeek = currentWeek;
 
         _saveLocal(_walletBalance, _lastGrantWeek);
@@ -217,7 +221,7 @@ const BankrollService = (() => {
         return {
             walletBalance: _walletBalance,
             lastGrantWeek: _lastGrantWeek,
-            weeklyGrant: WEEKLY_GRANT,
+            weeklyMinimum: WEEKLY_MINIMUM,
             buyInAmount: BUY_IN_AMOUNT,
             nextResetDate: getNextResetDate(),
             canBuyIn: _walletBalance >= BUY_IN_AMOUNT,
@@ -294,7 +298,7 @@ const BankrollService = (() => {
         setWallet,
         formatDate,
         BUY_IN_AMOUNT,
-        WEEKLY_GRANT,
+        WEEKLY_MINIMUM,
         _getWeekKey,
         _getNextResetDate,
         _saveLocalSync,

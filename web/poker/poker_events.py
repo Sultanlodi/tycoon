@@ -15,6 +15,7 @@ from .poker_logic import (
     PokerRoom, PokerPlayer, start_hand, process_action,
     room_to_dict, get_seated_players, make_poker_bot_decision,
     POKER_BOT_NAMES, TURN_TIME_LIMIT, POST_HAND_DELAY, card_to_dict,
+    get_active_in_hand, _resolve_hand, _advance_to_next_active, _advance_street,
 )
 
 # Module-level references, set during register()
@@ -157,6 +158,7 @@ def register(socketio, socket_to_player):
     def handle_add_bot(data):
         code = data.get('code')
         player_id = data.get('playerId')
+        difficulty = data.get('difficulty', 'normal')  # 'normal' or 'hard'
 
         if code not in poker_rooms:
             socketio.emit('error', {'message': 'Room not found'}, room=request.sid)
@@ -174,14 +176,15 @@ def register(socketio, socket_to_player):
             socketio.emit('error', {'message': 'Room is full'}, room=request.sid)
             return
 
-        # Pick a bot name not already used
+        # Pick a random bot name, avoiding duplicates if possible
         used_names = {p.name for p in room.players.values()}
-        bot_name = None
-        for name in POKER_BOT_NAMES:
-            if name not in used_names:
-                bot_name = name
-                break
-        if not bot_name:
+        available_names = [n for n in POKER_BOT_NAMES if n not in used_names]
+        if available_names:
+            bot_name = random.choice(available_names)
+        elif POKER_BOT_NAMES:
+            # All names exhausted, allow reuse
+            bot_name = random.choice(POKER_BOT_NAMES)
+        else:
             bot_name = f'Bot {len(room.players) + 1}'
 
         bot_id = f'poker-bot-{len(room.players)}-{int(time.time())}'
@@ -191,12 +194,13 @@ def register(socketio, socket_to_player):
             seat=len(room.players),
             stack=1000,
             is_bot=True,
+            bot_difficulty=difficulty,
         )
         room.players[bot_id] = bot
 
         socketio.emit('player_joined', {'player': {
             'id': bot.id, 'name': bot.name, 'stack': bot.stack,
-            'seat': bot.seat, 'isBot': True,
+            'seat': bot.seat, 'isBot': True, 'botDifficulty': bot.bot_difficulty,
         }}, room=code)
 
         _broadcast_poker_state(room)
@@ -235,6 +239,119 @@ def register(socketio, socket_to_player):
         }, room=code)
 
         _broadcast_poker_state(room)
+
+    @socketio.on('poker_kick_player')
+    def handle_kick_player(data):
+        code = data.get('code')
+        player_id = data.get('playerId')
+        target_id = data.get('targetPlayerId')
+
+        if code not in poker_rooms:
+            socketio.emit('error', {'message': 'Room not found'}, room=request.sid)
+            return
+
+        room = poker_rooms[code]
+
+        if room.host_id != player_id:
+            socketio.emit('error', {'message': 'Only the host can remove players'}, room=request.sid)
+            return
+
+        if target_id == player_id:
+            socketio.emit('error', {'message': 'Cannot remove yourself'}, room=request.sid)
+            return
+
+        if target_id not in room.players:
+            socketio.emit('error', {'message': 'Player not found'}, room=request.sid)
+            return
+
+        target = room.players[target_id]
+        target_name = target.name
+        target_is_bot = target.is_bot
+        target_sid = target.sid
+        target_stack = target.stack
+
+        # Apply the kick (fold if mid-hand, remove from hand_players, fix index)
+        _apply_kick(room, target_id)
+
+        # Remove from room
+        del room.players[target_id]
+
+        # Clean up disconnect tracking
+        if code in poker_disconnected and target_id in poker_disconnected[code]:
+            del poker_disconnected[code][target_id]
+
+        # Leave socket room
+        if target_sid:
+            leave_room(code, sid=target_sid)
+
+        # Notify kicked human
+        if not target_is_bot and target_sid:
+            socketio.emit('kicked_from_room', {
+                'reason': 'You were removed by the host',
+                'stack': target_stack,
+            }, room=target_sid)
+
+        # Notify remaining players
+        socketio.emit('player_kicked', {
+            'playerId': target_id,
+            'playerName': target_name,
+        }, room=code)
+
+        # Clean up empty room
+        if not room.players:
+            del poker_rooms[code]
+            return
+
+        _broadcast_poker_state(room)
+
+        # Post-kick: trigger auto-deal or bot processing
+        if room.game_phase == 'hand_end':
+            _schedule_auto_deal(room)
+        elif room.game_phase not in ('waiting', 'hand_end'):
+            _maybe_process_bots(room)
+            _start_turn_timer(room)
+
+
+def _apply_kick(room: PokerRoom, target_id: str):
+    """
+    Core kick logic: fold if mid-hand, fix hand_players and current_player_index.
+    Separated for testability.
+    """
+    target = room.players[target_id]
+
+    # Handle mid-hand kick
+    if room.game_phase not in ('waiting', 'hand_end') and target_id in room.hand_players:
+        was_current = (
+            room.hand_players[room.current_player_index] == target_id
+        )
+
+        if not target.is_folded:
+            if target.hole_cards:
+                room.folded_cards[target_id] = [card_to_dict(c) for c in target.hole_cards]
+            target.is_folded = True
+            room.needs_action.discard(target_id)
+
+        # Check if hand should end
+        active = get_active_in_hand(room)
+        if len(active) <= 1:
+            _resolve_hand(room)
+        elif was_current:
+            # Advance turn before removing from hand_players
+            _advance_to_next_active(room)
+            room.turn_start_time = time.time()
+
+        # Remove from hand_players and fix index
+        if target_id in room.hand_players:
+            removed_idx = room.hand_players.index(target_id)
+            room.hand_players.remove(target_id)
+            if room.hand_players:
+                if room.current_player_index >= len(room.hand_players):
+                    room.current_player_index = room.current_player_index % len(room.hand_players)
+                elif removed_idx < room.current_player_index:
+                    room.current_player_index -= 1
+    elif target_id in room.hand_players:
+        # hand_end phase: just clean up the list
+        room.hand_players.remove(target_id)
 
 
 # ============== Room Lifecycle (called from app.py) ==============
@@ -381,7 +498,6 @@ def handle_leave(room_code: str, player_id: str):
             active = [room.players[pid] for pid in room.hand_players
                       if pid in room.players and not room.players[pid].is_folded]
             if len(active) <= 1:
-                from .poker_logic import _resolve_hand
                 _resolve_hand(room)
 
     # Remove player
@@ -604,8 +720,11 @@ def _process_poker_bot_turns(room_code: str):
             _start_turn_timer(room)
             return  # Human's turn, stop
 
-        # Shorter delay for bots (0.8-1.5s)
-        _socketio.sleep(0.8 + (hash(current_pid) % 7) * 0.1)
+        # Hard bots act faster (0.3-0.9s), normal bots (0.8-1.5s)
+        if player.bot_difficulty == 'hard':
+            _socketio.sleep(0.3 + (hash(current_pid) % 7) * 0.085)
+        else:
+            _socketio.sleep(0.8 + (hash(current_pid) % 7) * 0.1)
 
         # Re-check room still exists after sleep
         if room_code not in poker_rooms:

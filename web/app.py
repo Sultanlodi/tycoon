@@ -106,6 +106,8 @@ class GameRoom:
     created_at: float = field(default_factory=time.time)
     # Card exchange state
     pending_selections: Dict[str, List[str]] = field(default_factory=dict)  # player_id -> card_ids
+    # Forced beggar punishment
+    forced_beggar_id: Optional[str] = None  # Player forced to Beggar next round
 
 # In-memory storage for rooms
 rooms: Dict[str, GameRoom] = {}
@@ -246,7 +248,7 @@ def get_worst_cards(hand: List[Card], count: int, is_revolution: bool = False) -
 
 # ============== Bot AI ==============
 
-BOT_NAMES = ['Ehsan Bot', 'Justin Bot', 'Sultan Bot', 'Denise Bot', 'Amer Bot', 'Zak Bot', 'Josh Bot', 'Reese Bot', 'Horacio Bot']
+BOT_NAMES = ['Ehsan Bot', 'Justin Bot', 'Sultan Bot', 'Denise Bot', 'Amer Bot', 'Zak Bot', 'Josh Bot', 'Reese Bot', 'Horacio Bot', 'Gui Bot', 'Dylan Bot']
 
 def make_bot_decision(player: Player, room: GameRoom) -> tuple[str, Optional[List[Card]]]:
     """Bot AI decision making - smarter bots that play pairs, triples, quads"""
@@ -449,6 +451,7 @@ def room_to_dict(room: GameRoom, for_player_id: Optional[str] = None) -> dict:
         'isRevolution': room.is_revolution,
         'gamePhase': room.game_phase,
         'finishOrder': room.finish_order,
+        'forcedBeggarId': room.forced_beggar_id,
     }
 
 def add_bots_to_room(room: GameRoom, count: int):
@@ -1118,6 +1121,53 @@ def move_to_next_player(room: GameRoom):
         if not players_list[room.current_player_index].has_finished:
             break
 
+def _apply_forced_beggar(room: GameRoom, tycoon_id: str):
+    """Force the failed Tycoon to Beggar rank, swapping with the current Beggar."""
+    tycoon_player = room.players.get(tycoon_id)
+    if not tycoon_player:
+        return
+
+    # Already Beggar — nothing to swap
+    if tycoon_player.rank == 'beggar':
+        for _, p in room.players.items():
+            if p.sid:
+                socketio.emit('forced_beggar', {
+                    'playerName': tycoon_player.name,
+                    'playerId': tycoon_id,
+                }, room=p.sid)
+        return
+
+    # Find the current Beggar to promote
+    current_beggar = next(
+        (p for p in room.players.values() if p.rank == 'beggar' and p.id != tycoon_id),
+        None
+    )
+    if not current_beggar:
+        return
+
+    # Swap ranks and adjust points
+    old_rank = tycoon_player.rank
+    old_rank_points = RANK_POINTS.get(PlayerRank(old_rank), 0)
+    beggar_points = RANK_POINTS[PlayerRank.BEGGAR]
+
+    # Tycoon player: loses old rank points, gains Beggar points (0)
+    tycoon_player.points -= old_rank_points
+    tycoon_player.points += beggar_points
+    tycoon_player.rank = 'beggar'
+
+    # Current Beggar: loses Beggar points (0), gains the old rank points
+    current_beggar.points -= beggar_points
+    current_beggar.points += old_rank_points
+    current_beggar.rank = old_rank
+
+    # Notify all players
+    for _, p in room.players.items():
+        if p.sid:
+            socketio.emit('forced_beggar', {
+                'playerName': tycoon_player.name,
+                'playerId': tycoon_id,
+            }, room=p.sid)
+
 def check_round_end(room: GameRoom):
     """Check if the round has ended"""
     players_list = list(room.players.values())
@@ -1131,8 +1181,24 @@ def check_round_end(room: GameRoom):
             room.finish_order.append(p.id)
             p.finish_order = len(room.finish_order)
 
+        # Capture previous Tycoon before rankings overwrite
+        previous_tycoon = None
+        if room.current_round >= 2:
+            previous_tycoon = next(
+                (p for p in players_list if p.rank == 'tycoon'), None
+            )
+
         # Assign rankings
         assign_rankings(room)
+
+        # Forced Beggar: if Tycoon failed to defend in rounds 2+
+        if previous_tycoon and room.finish_order and room.finish_order[0] != previous_tycoon.id:
+            if room.current_round >= room.total_rounds:
+                # Last round: apply immediately (affects final scoring)
+                _apply_forced_beggar(room, previous_tycoon.id)
+            else:
+                # Save for next round
+                room.forced_beggar_id = previous_tycoon.id
 
         # Check if game is over
         if room.current_round >= room.total_rounds:
@@ -1164,6 +1230,12 @@ def start_next_round(room: GameRoom):
         player.has_finished = False
         player.finish_order = None
         player.passed_this_turn = False
+
+    # Apply forced Beggar punishment (from previous round's failed Tycoon)
+    if room.forced_beggar_id:
+        _apply_forced_beggar(room, room.forced_beggar_id)
+        room.forced_beggar_id = None
+        socketio.sleep(1.5)  # Let the cutscene play before card selection
 
     # Request card selections from Tycoon and Rich (bots auto-select)
     room.game_phase = 'card_selection'

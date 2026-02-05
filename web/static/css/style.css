@@ -221,7 +221,7 @@ body {
 /* ============== Waiting Room ============== */
 #waiting-screen .container {
     text-align: center;
-    padding-top: 60px;
+    padding-top: 24px;
 }
 
 #waiting-screen h2 {
@@ -1011,6 +1011,39 @@ body {
     100% { transform: skewX(-10deg) translateY(0); opacity: 1; }
 }
 
+/* ============== Forced Beggar Cutscene ============== */
+.forced-beggar-cutscene {
+    background: linear-gradient(180deg, #1a0000 0%, var(--p5-black) 100%);
+}
+
+.forced-beggar-cutscene .cutscene-content {
+    animation: demotionShake 0.8s ease-out;
+}
+
+.forced-beggar-cutscene h1 {
+    color: var(--p5-red);
+    text-shadow: 8px 8px 0 #330000;
+    font-size: 80px;
+}
+
+.forced-beggar-cutscene p {
+    color: var(--p5-yellow);
+    font-size: 22px;
+    letter-spacing: 3px;
+}
+
+.forced-beggar-cutscene .forced-beggar-name {
+    color: var(--p5-white);
+    font-size: 28px;
+    display: block;
+    margin-bottom: 8px;
+}
+
+.forced-beggar-cutscene::before,
+.forced-beggar-cutscene::after {
+    background: var(--p5-red);
+}
+
 /* ============== Cutscene Animations ============== */
 @keyframes cutsceneFade {
     0% { opacity: 1; }
@@ -1744,6 +1777,19 @@ body {
     .demotion-cutscene .demotion-name {
         font-size: 24px;
     }
+
+    .forced-beggar-cutscene h1 {
+        font-size: 40px;
+    }
+
+    .forced-beggar-cutscene p {
+        font-size: 14px;
+        letter-spacing: 2px;
+    }
+
+    .forced-beggar-cutscene .forced-beggar-name {
+        font-size: 20px;
+    }
 }
 
 @media (min-width: 768px) {
@@ -1901,11 +1947,23 @@ body {
     line-height: 1.4;
 }
 
+/* Page Header (change-game + auth bar) */
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.page-header .auth-bar {
+    margin-bottom: 0;
+    padding: 0;
+}
+
 /* Change Game Button */
 .change-game-btn {
-    position: absolute;
-    top: 16px;
-    left: 16px;
+    display: block;
+    width: fit-content;
     background: transparent;
     border: 2px solid rgba(255, 255, 255, 0.3);
     color: rgba(255, 255, 255, 0.7);
@@ -1916,19 +1974,14 @@ body {
     text-transform: uppercase;
     letter-spacing: 1px;
     transition: all 0.2s;
-    z-index: 10;
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .change-game-btn:hover {
     border-color: var(--p5-white);
     color: var(--p5-white);
     background: rgba(255, 255, 255, 0.1);
-}
-
-/* Make home screens position relative for the change-game-btn */
-#home-screen .container,
-#poker-home-screen .container {
-    position: relative;
 }
 
 /* ============== Poker Home ============== */
@@ -1971,7 +2024,7 @@ body {
 /* ============== Poker Lobby ============== */
 .poker-lobby {
     text-align: center;
-    padding-top: 60px;
+    padding-top: 24px;
     position: relative;
 }
 
@@ -2010,6 +2063,75 @@ body {
     color: var(--p5-yellow);
     font-weight: 700;
     font-size: 13px;
+}
+
+/* Kick Button (lobby) */
+.player-slot-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.kick-btn {
+    background: rgba(255, 60, 60, 0.15);
+    border: 1px solid rgba(255, 60, 60, 0.4);
+    color: #ff4444;
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    line-height: 1;
+    transition: all 0.2s;
+}
+
+.kick-btn:hover {
+    background: rgba(255, 60, 60, 0.4);
+    border-color: #ff4444;
+}
+
+/* Kick Button (in-game seat) */
+.seat-kick-btn {
+    position: absolute;
+    top: -6px;
+    left: -6px;
+    background: rgba(255, 60, 60, 0.8);
+    border: none;
+    color: white;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    line-height: 1;
+    opacity: 0;
+    transition: opacity 0.2s;
+    z-index: 10;
+}
+
+.poker-seat:hover .seat-kick-btn {
+    opacity: 1;
+}
+
+/* Danger button (kick confirmation modal) */
+.btn-danger {
+    background: #cc3333;
+    border-color: #cc3333;
+}
+
+.btn-danger:hover {
+    background: #ff4444;
+    border-color: #ff4444;
 }
 
 /* Poker Add Bot Button */
@@ -2358,6 +2480,22 @@ body {
     color: rgba(255, 255, 255, 0.6);
 }
 
+.hard-badge {
+    background: linear-gradient(135deg, #ff6b00, #cc5500) !important;
+    color: #fff;
+}
+
+.hard-bot-btn {
+    border-color: #ff6b00;
+    color: #ff6b00;
+}
+
+.hard-bot-btn:hover {
+    background: rgba(255, 107, 0, 0.15);
+    border-color: #ff8533;
+    color: #ff8533;
+}
+
 .seat-stack {
     color: rgba(255, 255, 255, 0.6);
     font-size: 11px;
@@ -2521,7 +2659,7 @@ body {
 
 .reveal-spotlight {
     position: absolute;
-    top: 45%;
+    top: 40px;
     left: 50%;
     transform: translateX(-50%);
     z-index: 25;
@@ -2536,13 +2674,13 @@ body {
     display: flex;
     align-items: center;
     gap: 10px;
-    background: rgba(0, 0, 0, 0.85);
-    border: 2px solid var(--p5-yellow);
-    border-radius: 8px;
-    padding: 10px 18px;
+    background: rgba(0, 0, 0, 0.6);
+    border: 1px solid rgba(255, 215, 0, 0.5);
+    border-radius: 6px;
+    padding: 8px 14px;
     opacity: 0;
-    transform: translateY(10px) scale(0.9);
-    transition: opacity 0.35s ease-out, transform 0.35s ease-out;
+    transform: translateY(-8px) scale(0.95);
+    transition: opacity 0.3s ease-out, transform 0.3s ease-out;
     white-space: nowrap;
 }
 
@@ -2750,63 +2888,74 @@ body {
     color: var(--p5-yellow);
 }
 
-/* ============== Winner Overlay ============== */
+/* ============== Winner Banner (non-blocking) ============== */
 
 .poker-winner-overlay {
     position: absolute;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(0, 0, 0, 0.75);
-    display: flex;
-    justify-content: center;
-    align-items: center;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
     z-index: 20;
+    pointer-events: none;
+}
+
+.poker-winner-overlay .poker-winner-content {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.9);
+    transition: opacity 0.4s ease-out, transform 0.4s ease-out;
 }
 
 .poker-winner-overlay.winner-animate .poker-winner-content {
-    animation: winnerPop 0.5s ease-out;
+    opacity: 1;
+    transform: translateY(0) scale(1);
 }
 
-@keyframes winnerPop {
-    from { transform: scale(0.5); opacity: 0; }
-    to { transform: scale(1); opacity: 1; }
+.poker-winner-overlay.winner-exit .poker-winner-content {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.95);
+    transition: opacity 0.3s ease-in, transform 0.3s ease-in;
 }
 
 .poker-winner-content {
     text-align: center;
-    padding: 24px;
-    max-width: 340px;
+    padding: 10px 20px;
+    background: rgba(0, 0, 0, 0.7);
+    border: 2px solid var(--p5-yellow);
+    border-radius: 8px;
+    white-space: nowrap;
 }
 
 .winner-entry {
-    margin-bottom: 16px;
+    margin-bottom: 4px;
+}
+
+.winner-entry:last-child {
+    margin-bottom: 0;
 }
 
 .winner-name {
-    font-size: 20px;
+    font-size: 14px;
     font-weight: 900;
     text-transform: uppercase;
-    letter-spacing: 2px;
+    letter-spacing: 1px;
     color: var(--p5-yellow);
+    display: inline;
 }
 
 .winner-amount {
-    font-size: 28px;
+    font-size: 16px;
     font-weight: 900;
     color: var(--p5-white);
-    animation: amountGlow 1s ease-in-out infinite alternate;
-}
-
-@keyframes amountGlow {
-    from { text-shadow: 0 0 10px rgba(255, 215, 0, 0.3); }
-    to { text-shadow: 0 0 25px rgba(255, 215, 0, 0.8); }
+    display: inline;
+    margin-left: 6px;
 }
 
 .winner-hand-name {
-    color: rgba(255, 255, 255, 0.6);
-    font-size: 14px;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 11px;
     text-transform: uppercase;
     letter-spacing: 1px;
-    margin-top: 4px;
+    margin-top: 2px;
 }
 
 .folded-reveal-section {
@@ -3089,13 +3238,20 @@ body {
     }
 
     .spotlight-banner {
-        padding: 8px 12px;
-        gap: 6px;
+        padding: 6px 10px;
+        gap: 5px;
     }
 
-    .spotlight-name { font-size: 12px; }
-    .spotlight-label { font-size: 10px; }
-    .spotlight-cards .mini-card { font-size: 11px; padding: 2px 4px; }
+    .spotlight-name { font-size: 11px; }
+    .spotlight-label { font-size: 9px; }
+    .spotlight-cards .mini-card { font-size: 10px; padding: 2px 3px; }
+
+    .poker-winner-content {
+        padding: 8px 14px;
+    }
+
+    .winner-name { font-size: 12px; }
+    .winner-amount { font-size: 14px; }
 
     .rank-entry {
         padding: 6px 8px;
@@ -3341,5 +3497,31 @@ body {
 
     .auth-bar {
         justify-content: center;
+    }
+
+    /* 2-row header on mobile: buttons top, user info below */
+    .page-header {
+        flex-wrap: wrap;
+    }
+
+    .page-header .auth-bar {
+        order: 1;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 4px;
+    }
+
+    .page-header .auth-bar-user {
+        font-size: 11px;
+    }
+
+    .page-header .auth-bar-btn {
+        padding: 5px 10px;
+        font-size: 11px;
+    }
+
+    .page-header .change-game-btn {
+        padding: 6px 12px;
+        font-size: 11px;
     }
 }

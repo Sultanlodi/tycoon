@@ -13,8 +13,10 @@
         <!-- Tycoon Home Screen -->
         <div id="home-screen" class="screen active">
             <div class="container">
-                <div id="auth-bar" class="auth-bar" style="display:none;"></div>
-                <button class="change-game-btn" onclick="goToPicker()">Change Game</button>
+                <div class="page-header">
+                    <button class="change-game-btn" onclick="goToPicker()">Change Game</button>
+                    <div id="auth-bar" class="auth-bar" style="display:none;"></div>
+                </div>
                 <h1 class="logo">TYCOON</h1>
                 <p class="subtitle">Take Your Heart</p>
 
@@ -207,6 +209,9 @@
         </div>
         <div id="demotion-cutscene" class="cutscene demotion-cutscene" style="display: none;">
             <div class="cutscene-content"><h1>DEMOTED!</h1><p>Tycoon falls to Beggar<span class="demotion-name" id="demoted-name"></span></p></div>
+        </div>
+        <div id="forced-beggar-cutscene" class="cutscene forced-beggar-cutscene" style="display: none;">
+            <div class="cutscene-content"><h1>PUNISHED!</h1><p><span class="forced-beggar-name" id="forced-beggar-name"></span> failed to defend Tycoon and is forced to Beggar!</p></div>
         </div>
 
         <!-- Shared Modal -->
